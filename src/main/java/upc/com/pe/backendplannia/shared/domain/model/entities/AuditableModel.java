@@ -1,5 +1,6 @@
 package upc.com.pe.backendplannia.shared.domain.model.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import org.springframework.data.annotation.CreatedDate;
@@ -8,21 +9,27 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.util.Date;
 
+/**
+ * Base class for all entities that require auditing.
+ *
+ * @summary The class is an abstract mapped superclass that adds identity and auditing fields to entities.
+ */
+@Getter
 @EntityListeners(AuditingEntityListener.class)
 @MappedSuperclass
-public class AuditableModel {
+public abstract class AuditableModel {
+
     @Id
-    @Getter
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Getter
     @CreatedDate
     @Column(nullable = false, updatable = false)
+    @JsonIgnore
     private Date createdAt;
 
-    @Getter
     @LastModifiedDate
     @Column(nullable = false)
+    @JsonIgnore
     private Date updatedAt;
 }
