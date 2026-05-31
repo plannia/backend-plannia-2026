@@ -46,4 +46,8 @@ public class Team extends AuditableAbstractAggregateRoot<Team> {
     public void addUser(User user) {
         users.add(user);
     }
+
+    public void removeUser(User user) {
+        users.remove(user);
+    }
 }

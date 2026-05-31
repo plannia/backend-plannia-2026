@@ -61,9 +61,9 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     }
 
     public void updateUser(UpdateUserCommand command, String password) {
-        if (command.name() != null) this.name = command.name();
-        if (command.email() != null) this.email = command.email();
-        if (command.position() != null) this.position = command.position();
+        if (command.name() != null && !command.name().isBlank()) this.name = command.name();
+        if (command.email() != null && !command.email().isBlank()) this.email = command.email();
+        if (command.position() != null && !command.position().isBlank()) this.position = command.position();
         if (password != null) this.password = password;
     }
 }

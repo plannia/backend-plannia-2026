@@ -6,7 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import upc.com.pe.backendplannia.iam.application.internal.outboundedservices.HashingService;
 import upc.com.pe.backendplannia.iam.application.internal.outboundedservices.TokenService;
 import upc.com.pe.backendplannia.iam.domain.model.aggregates.User;
-import upc.com.pe.backendplannia.iam.domain.model.commands.DeleteTeamMember;
+import upc.com.pe.backendplannia.iam.domain.model.commands.DeleteUserCommand;
 import upc.com.pe.backendplannia.iam.domain.model.commands.SignInCommand;
 import upc.com.pe.backendplannia.iam.domain.model.commands.SignUpCommand;
 import upc.com.pe.backendplannia.iam.domain.model.commands.UpdateUserCommand;
@@ -62,12 +62,36 @@ public class UserCommandServiceImpl implements UserCommandService {
     }
 
     @Override
-    public Optional<User> handle(DeleteTeamMember command) {
-        throw new UnsupportedOperationException("Delete team member is not implemented yet");
+    @Transactional
+    public Optional<User> handle(DeleteUserCommand command) {
+        var user = userRepository.findById(command.userId()).orElse(null);
+        if (user == null) {
+            return Optional.empty();
+        }
+
+        user.getTeam().removeUser(user);
+        userRepository.delete(user);
+        return Optional.of(user);
     }
 
     @Override
+    @Transactional
     public Optional<User> handle(UpdateUserCommand command) {
-        throw new UnsupportedOperationException("Update user is not implemented yet");
+        var user = userRepository.findById(command.id()).orElse(null);
+        if (user == null) {
+            return Optional.empty();
+        }
+
+        if (command.email() != null && !command.email().isBlank()
+                && userRepository.existsByEmailAndIdNot(command.email(), command.id())) {
+            throw new IllegalArgumentException("User with this email already exists");
+        }
+
+        var encodedPassword = command.password() != null && !command.password().isBlank()
+                ? hashingService.encode(command.password())
+                : null;
+
+        user.updateUser(command, encodedPassword);
+        return Optional.of(userRepository.save(user));
     }
 }
