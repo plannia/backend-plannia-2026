@@ -15,6 +15,7 @@ import upc.com.pe.backendplannia.iam.infrastructure.authorization.sfs.model.Emai
 import upc.com.pe.backendplannia.iam.infrastructure.tokens.jwt.BearerTokenService;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Bearer Authorization Request Filter.
@@ -27,6 +28,19 @@ import java.io.IOException;
 public class BearerAuthorizationRequestFilter extends OncePerRequestFilter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BearerAuthorizationRequestFilter.class);
+
+    private static final List<String> PUBLIC_PATH_PREFIXES = List.of(
+            "/api/v1/authentication/",
+            "/api/v1/teams",
+            "/v3/api-docs",
+            "/swagger-ui",
+            "/webjars/"
+    );
+
+    private static final List<String> PUBLIC_EXACT_PATHS = List.of(
+            "/swagger-ui.html"
+    );
+
     private final BearerTokenService tokenService;
 
 
@@ -36,6 +50,15 @@ public class BearerAuthorizationRequestFilter extends OncePerRequestFilter {
     public BearerAuthorizationRequestFilter(BearerTokenService tokenService, UserDetailsService userDetailsService) {
         this.tokenService = tokenService;
         this.userDetailsService = userDetailsService;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+        var path = request.getServletPath();
+        if (PUBLIC_EXACT_PATHS.contains(path)) {
+            return true;
+        }
+        return PUBLIC_PATH_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
     /**

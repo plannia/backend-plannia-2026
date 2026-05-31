@@ -40,6 +40,5 @@ public class Task extends AuditableAbstractAggregateRoot<Task> {
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
 
-    protected Task() {
-    }
+    public Task() {}
 }

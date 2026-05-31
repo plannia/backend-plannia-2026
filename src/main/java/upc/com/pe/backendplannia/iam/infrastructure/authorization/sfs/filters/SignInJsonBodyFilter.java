@@ -29,6 +29,7 @@ public class SignInJsonBodyFilter extends OncePerRequestFilter {
 
     private static final String SIGN_IN_PATH = "/api/v1/authentication/sign-in";
 
+    private static final Pattern FORM_EMAIL = Pattern.compile("(?:^|&)email=([^&]*)");
     private static final Pattern FORM_USERNAME = Pattern.compile("(?:^|&)username=([^&]*)");
     private static final Pattern FORM_PASSWORD = Pattern.compile("(?:^|&)password=([^&]*)");
 
@@ -61,9 +62,12 @@ public class SignInJsonBodyFilter extends OncePerRequestFilter {
         boolean formEncoded = contentType != null && contentType.toLowerCase()
                 .contains("application/x-www-form-urlencoded");
         if (formEncoded || (str.contains("=") && !str.trim().startsWith("{"))) {
-            String username = extractFormParam(str, FORM_USERNAME);
+            String email = extractFormParam(str, FORM_EMAIL);
+            if (email.isEmpty()) {
+                email = extractFormParam(str, FORM_USERNAME);
+            }
             String password = extractFormParam(str, FORM_PASSWORD);
-            String json = "{\"username\":\"" + escapeJson(username) + "\",\"password\":\"" + escapeJson(password) + "\"}";
+            String json = "{\"email\":\"" + escapeJson(email) + "\",\"password\":\"" + escapeJson(password) + "\"}";
             return json.getBytes(StandardCharsets.UTF_8);
         }
         return raw;

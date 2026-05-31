@@ -1,6 +1,8 @@
 package upc.com.pe.backendplannia.iam.infrastructure.authorization.sfs.configuration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,6 +38,10 @@ import java.util.List;
 @Configuration
 @EnableMethodSecurity
 public class WebSecurityConfiguration {
+
+    private static final ObjectMapper API_ERROR_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     private final UserDetailsService userDetailsService;
 
@@ -115,13 +121,15 @@ public class WebSecurityConfiguration {
 
                             response.setStatus(403);
                             response.setContentType("application/json");
-                            response.getWriter().write(new ObjectMapper().writeValueAsString(error));
+                            response.getWriter().write(API_ERROR_MAPPER.writeValueAsString(error));
                         })
                 )
                 .sessionManagement( customizer -> customizer.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
                         .requestMatchers(
                                 "/api/v1/authentication/**",
+                                "/api/v1/teams/**",
+                                "/v3/api-docs",
                                 "/v3/api-docs/**",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",

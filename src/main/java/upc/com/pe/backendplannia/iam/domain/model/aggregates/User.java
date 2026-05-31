@@ -9,6 +9,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
+import upc.com.pe.backendplannia.iam.domain.model.commands.CreateTeamCommand;
+import upc.com.pe.backendplannia.iam.domain.model.commands.SignUpCommand;
+import upc.com.pe.backendplannia.iam.domain.model.commands.UpdateUserCommand;
 import upc.com.pe.backendplannia.iam.domain.model.valueobjects.Role;
 import upc.com.pe.backendplannia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 
@@ -37,6 +40,30 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     @JoinColumn(name = "team_id", nullable = false)
     private Team team;
 
-    protected User() {
+    public User() {}
+
+    public User(SignUpCommand command, Team team, String password) {
+        this.name = command.name();
+        this.email = command.email();
+        this.password = password;
+        this.position = command.position();
+        this.team = team;
+        this.role = Role.MEMBER;
+    }
+
+    public User(CreateTeamCommand command, Team team, String password) {
+        this.name = command.leaderName();
+        this.email = command.email();
+        this.password = password;
+        this.position = "Team Leader";
+        this.team = team;
+        this.role = Role.LEADER;
+    }
+
+    public void updateUser(UpdateUserCommand command, String password) {
+        if (command.name() != null) this.name = command.name();
+        if (command.email() != null) this.email = command.email();
+        if (command.position() != null) this.position = command.position();
+        if (password != null) this.password = password;
     }
 }

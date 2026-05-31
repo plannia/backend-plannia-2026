@@ -43,6 +43,5 @@ public class Category extends AuditableAbstractAggregateRoot<Category> {
     @OneToMany(mappedBy = "category", fetch = FetchType.LAZY)
     private List<Task> tasks = new ArrayList<>();
 
-    protected Category() {
-    }
+    public Category() {}
 }
