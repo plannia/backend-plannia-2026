@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import lombok.Getter;
 import lombok.Setter;
+import upc.com.pe.backendplannia.project.domain.model.valueobjects.Status;
 import upc.com.pe.backendplannia.project.domain.model.valueobjects.UserId;
 import upc.com.pe.backendplannia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 
@@ -25,6 +26,8 @@ public class Category extends AuditableAbstractAggregateRoot<Category> {
 
     private String name;
     private LocalDateTime limitDate;
+
+    private Status status;
 
     // Referencias a usuarios del contexto IAM por ID (sin acoplar la entidad User).
     @ElementCollection(fetch = FetchType.LAZY)

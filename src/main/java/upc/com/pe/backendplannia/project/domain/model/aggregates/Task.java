@@ -33,6 +33,9 @@ public class Task extends AuditableAbstractAggregateRoot<Task> {
 
     private LocalDateTime limitDate;
 
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
