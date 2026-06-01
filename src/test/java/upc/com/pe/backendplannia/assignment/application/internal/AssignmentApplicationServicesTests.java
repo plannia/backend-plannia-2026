@@ -27,6 +27,7 @@ import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryServi
 import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProvider;
 import upc.com.pe.backendplannia.assignment.domain.services.MemberWorkloadPort;
 import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService;
+import upc.com.pe.backendplannia.assignment.domain.services.TaskAssignmentPort;
 import upc.com.pe.backendplannia.assignment.domain.services.TaskRequirementResolver;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
 import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVector;
@@ -82,11 +83,13 @@ class AssignmentApplicationServicesTests {
     @MockitoBean
     private TaskRequirementResolver taskRequirementResolver;
 
+    @MockitoBean
+    private TaskAssignmentPort taskAssignmentPort;
+
     @Test
     void handleCreateAssignmentCommandCreatesActiveAssignment() {
         var command = new CreateAssignmentCommand(SECOND_USER_ID, TASK_ID, 0.80f, 0.60f, 0.40f, 0.69f);
 
-        when(assignmentRepository.existsByTaskIdAndStatus(TASK_ID, AssignmentStatus.ACTIVE)).thenReturn(false);
         when(assignmentRepository.save(any(Assignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = assignmentCommandService.handle(command);
@@ -99,17 +102,8 @@ class AssignmentApplicationServicesTests {
         assertThat(result.get().getInterestMatch()).isEqualTo(0.40f);
         assertThat(result.get().getScore()).isEqualTo(0.69f);
         assertThat(result.get().getStatus()).isEqualTo(AssignmentStatus.ACTIVE);
-    }
-
-    @Test
-    void handleCreateAssignmentCommandRejectsTaskWithActiveAssignment() {
-        when(assignmentRepository.existsByTaskIdAndStatus(TASK_ID, AssignmentStatus.ACTIVE)).thenReturn(true);
-
-        assertThatThrownBy(() -> assignmentCommandService.handle(
-                new CreateAssignmentCommand(SECOND_USER_ID, TASK_ID, 0.8f, 0.6f, 0.4f, 0.69f)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Task already has an active assignment");
-        verify(assignmentRepository, never()).save(any(Assignment.class));
+        assertThat(result.get().isActive()).isTrue();
+        verify(taskAssignmentPort).markAsAssigned(TASK_ID);
     }
 
     @Test
@@ -138,7 +132,6 @@ class AssignmentApplicationServicesTests {
                 8f
         );
 
-        when(assignmentRepository.existsByTaskIdAndStatus(TASK_ID, AssignmentStatus.ACTIVE)).thenReturn(false);
         when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(taskRequirement));
         when(candidateProfileProvider.findByUserId(SECOND_USER_ID)).thenReturn(Optional.of(selectedCandidate));
         when(assignmentRepository.save(any(Assignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -155,25 +148,13 @@ class AssignmentApplicationServicesTests {
         assertThat(result.get().getStatus()).isEqualTo(AssignmentStatus.ACTIVE);
         // La carga del miembro se reserva por las horas estimadas de la tarea.
         verify(memberWorkloadPort).reserveHours(SECOND_USER_ID, taskRequirement.estimatedHours());
-    }
-
-    @Test
-    void handleConfirmRecommendationCommandRejectsTaskWithActiveAssignment() {
-        when(assignmentRepository.existsByTaskIdAndStatus(TASK_ID, AssignmentStatus.ACTIVE)).thenReturn(true);
-
-        assertThatThrownBy(() -> assignmentCommandService.handle(
-                new ConfirmRecommendationCommand(TASK_ID, SECOND_USER_ID)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Task already has an active assignment");
-        verify(assignmentRepository, never()).save(any(Assignment.class));
-        verify(memberWorkloadPort, never()).reserveHours(anyLong(), anyFloat());
+        verify(taskAssignmentPort).markAsAssigned(TASK_ID);
     }
 
     @Test
     void handleConfirmRecommendationCommandRejectsUnknownMemberAndDoesNotReserveWorkload() {
         var taskRequirement = taskRequirement();
 
-        when(assignmentRepository.existsByTaskIdAndStatus(TASK_ID, AssignmentStatus.ACTIVE)).thenReturn(false);
         when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(taskRequirement));
         when(candidateProfileProvider.findByUserId(SECOND_USER_ID)).thenReturn(Optional.empty());
 
@@ -198,7 +179,6 @@ class AssignmentApplicationServicesTests {
                 8f
         );
 
-        when(assignmentRepository.existsByTaskIdAndStatus(TASK_ID, AssignmentStatus.ACTIVE)).thenReturn(false);
         when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(taskRequirement));
         when(candidateProfileProvider.findByUserId(SECOND_USER_ID)).thenReturn(Optional.of(overloadedCandidate));
 

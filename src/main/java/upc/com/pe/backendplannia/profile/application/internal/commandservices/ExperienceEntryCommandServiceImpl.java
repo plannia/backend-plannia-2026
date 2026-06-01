@@ -29,6 +29,11 @@ public class ExperienceEntryCommandServiceImpl implements ExperienceEntryCommand
     @Override
     @Transactional
     public Optional<ExperienceEntry> handle(AddExperienceEntryCommand command) {
+        var existingEntry = experienceEntryRepository.findByUserIdAndTaskId(command.userId(), command.taskId());
+        if (existingEntry.isPresent()) {
+            return existingEntry;
+        }
+
         var experienceEntry = new ExperienceEntry(command.userId(), command.taskId(), command.taskEmbedding());
         var savedExperienceEntry = experienceEntryRepository.save(experienceEntry);
 

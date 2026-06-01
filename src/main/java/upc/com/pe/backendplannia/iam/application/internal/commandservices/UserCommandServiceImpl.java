@@ -1,6 +1,7 @@
 package upc.com.pe.backendplannia.iam.application.internal.commandservices;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import upc.com.pe.backendplannia.iam.application.internal.outboundedservices.HashingService;
@@ -13,6 +14,7 @@ import upc.com.pe.backendplannia.iam.domain.model.commands.UpdateUserCommand;
 import upc.com.pe.backendplannia.iam.domain.services.UserCommandService;
 import upc.com.pe.backendplannia.iam.infrastructure.persistence.jpa.repositories.TeamRepository;
 import upc.com.pe.backendplannia.iam.infrastructure.persistence.jpa.repositories.UserRepository;
+import upc.com.pe.backendplannia.shared.domain.model.events.UserDeletedEvent;
 
 import java.util.Optional;
 
@@ -22,17 +24,20 @@ public class UserCommandServiceImpl implements UserCommandService {
     private final UserRepository userRepository;
     private final HashingService hashingService;
     private final TokenService tokenService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public UserCommandServiceImpl(
             TeamRepository teamRepository,
             UserRepository userRepository,
             HashingService hashingService,
-            TokenService tokenService
+            TokenService tokenService,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
         this.teamRepository = teamRepository;
         this.userRepository = userRepository;
         this.hashingService = hashingService;
         this.tokenService = tokenService;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Override
@@ -69,8 +74,10 @@ public class UserCommandServiceImpl implements UserCommandService {
             return Optional.empty();
         }
 
+        var deletedUserId = user.getId();
         user.getTeam().removeUser(user);
         userRepository.delete(user);
+        applicationEventPublisher.publishEvent(new UserDeletedEvent(deletedUserId));
         return Optional.of(user);
     }
 

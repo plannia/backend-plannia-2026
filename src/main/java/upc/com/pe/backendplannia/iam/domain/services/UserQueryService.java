@@ -1,5 +1,16 @@
 package upc.com.pe.backendplannia.iam.domain.services;
 
+import upc.com.pe.backendplannia.iam.domain.model.queries.GetUserByIdQuery;
+import upc.com.pe.backendplannia.iam.domain.model.readmodels.UserDetailReadModel;
+
+import java.util.Optional;
+
 public interface UserQueryService {
-    // get user by id but with profile
+    boolean existsById(Long userId);
+
+    Optional<Long> findTeamIdByUserId(Long userId);
+
+    Optional<String> findNameById(Long userId);
+
+    Optional<UserDetailReadModel> handle(GetUserByIdQuery query);
 }

@@ -10,14 +10,18 @@ import upc.com.pe.backendplannia.assignment.domain.model.commands.AutoAssignTeam
 import upc.com.pe.backendplannia.assignment.domain.model.commands.CompleteAssignmentCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.commands.ConfirmRecommendationCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.commands.CreateAssignmentCommand;
+import upc.com.pe.backendplannia.assignment.domain.model.commands.DeactivateUserAssignmentsCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.events.AssignmentCompletedEvent;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentCommandService;
 import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProvider;
 import upc.com.pe.backendplannia.assignment.domain.services.MemberWorkloadPort;
 import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService;
+import upc.com.pe.backendplannia.assignment.domain.services.TaskAssignmentPort;
 import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.AssignmentStatus;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +33,7 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
     private final TaskRequirementGateway taskRequirementGateway;
     private final ScoringDomainService scoringDomainService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final TaskAssignmentPort taskAssignmentPort;
 
     public AssignmentCommandServiceImpl(
             AssignmentRepository assignmentRepository,
@@ -36,7 +41,8 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
             MemberWorkloadPort memberWorkloadPort,
             TaskRequirementGateway taskRequirementGateway,
             ScoringDomainService scoringDomainService,
-            ApplicationEventPublisher applicationEventPublisher
+            ApplicationEventPublisher applicationEventPublisher,
+            TaskAssignmentPort taskAssignmentPort
     ) {
         this.assignmentRepository = assignmentRepository;
         this.candidateProfileProvider = candidateProfileProvider;
@@ -44,13 +50,15 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
         this.taskRequirementGateway = taskRequirementGateway;
         this.scoringDomainService = scoringDomainService;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.taskAssignmentPort = taskAssignmentPort;
     }
 
     @Override
+    @Transactional
     public Optional<Assignment> handle(CreateAssignmentCommand command) {
-        ensureTaskHasNoActiveAssignment(command.taskId());
-        var assignment = new Assignment(command);
-        return Optional.of(assignmentRepository.save(assignment));
+        var savedAssignment = assignmentRepository.save(new Assignment(command));
+        taskAssignmentPort.markAsAssigned(savedAssignment.getTaskId());
+        return Optional.of(savedAssignment);
     }
 
     @Override
@@ -66,8 +74,6 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
     @Override
     @Transactional
     public Optional<Assignment> handle(ConfirmRecommendationCommand command) {
-        ensureTaskHasNoActiveAssignment(command.taskId());
-
         var taskRequirement = taskRequirementGateway.requireByTaskId(command.taskId());
         var candidate = candidateProfileProvider.findByUserId(command.userId())
                 .orElseThrow(() -> new IllegalArgumentException("Member profile with this user id not found"));
@@ -90,6 +96,7 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
                 score
         );
         var savedAssignment = assignmentRepository.save(new Assignment(createAssignmentCommand));
+        taskAssignmentPort.markAsAssigned(savedAssignment.getTaskId());
 
         // Reservamos la carga del miembro al asignar; se libera al completar (ver handler del evento).
         memberWorkloadPort.reserveHours(command.userId(), taskRequirement.estimatedHours());
@@ -119,9 +126,18 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
         return Optional.of(savedAssignment);
     }
 
-    private void ensureTaskHasNoActiveAssignment(Long taskId) {
-        if (assignmentRepository.existsByTaskIdAndStatus(taskId, AssignmentStatus.ACTIVE)) {
-            throw new IllegalArgumentException("Task already has an active assignment");
+    @Override
+    @Transactional
+    public List<Long> handle(DeactivateUserAssignmentsCommand command) {
+        var assignments = assignmentRepository.findByUserId(command.userId());
+        var affectedTaskIds = new LinkedHashSet<Long>();
+
+        for (var assignment : assignments) {
+            assignment.deactivate();
+            affectedTaskIds.add(assignment.getTaskId());
         }
+
+        assignmentRepository.saveAll(assignments);
+        return new ArrayList<>(affectedTaskIds);
     }
 }

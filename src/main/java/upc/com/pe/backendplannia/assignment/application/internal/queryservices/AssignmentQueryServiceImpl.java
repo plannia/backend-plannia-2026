@@ -4,14 +4,18 @@ import org.springframework.stereotype.Service;
 import upc.com.pe.backendplannia.assignment.application.internal.outboundservices.TaskRequirementGateway;
 import upc.com.pe.backendplannia.assignment.domain.model.aggregates.Assignment;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetAssignmentsByUserIdQuery;
+import upc.com.pe.backendplannia.assignment.domain.model.queries.GetLatestAssignmentByTaskIdQuery;
+import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTaskIdsByLatestAssignmentUserIdQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.LatestAssignmentSnapshot;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryService;
 import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProvider;
 import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AssignmentQueryServiceImpl implements AssignmentQueryService {
@@ -47,5 +51,21 @@ public class AssignmentQueryServiceImpl implements AssignmentQueryService {
     @Override
     public List<Assignment> handle(GetAssignmentsByUserIdQuery query) {
         return assignmentRepository.findByUserId(query.userId());
+    }
+
+    @Override
+    public Optional<LatestAssignmentSnapshot> handle(GetLatestAssignmentByTaskIdQuery query) {
+        return assignmentRepository.findFirstByTaskIdOrderByCreatedAtDesc(query.taskId())
+                .map(assignment -> new LatestAssignmentSnapshot(
+                        assignment.getUserId(),
+                        assignment.isActive()
+                ));
+    }
+
+    @Override
+    public List<Long> handle(GetTaskIdsByLatestAssignmentUserIdQuery query) {
+        return assignmentRepository.findLatestAssignmentsByUserId(query.userId()).stream()
+                .map(Assignment::getTaskId)
+                .toList();
     }
 }

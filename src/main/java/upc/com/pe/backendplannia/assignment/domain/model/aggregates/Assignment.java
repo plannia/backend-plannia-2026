@@ -34,6 +34,9 @@ public class Assignment extends AuditableAbstractAggregateRoot<Assignment> {
     @Column(nullable = false)
     private AssignmentStatus status;
 
+    @Column(nullable = false)
+    private boolean isActive;
+
     protected Assignment() {
     }
 
@@ -45,6 +48,7 @@ public class Assignment extends AuditableAbstractAggregateRoot<Assignment> {
         this.interestMatch = command.interestMatch();
         this.score = command.score();
         this.status = AssignmentStatus.ACTIVE;
+        this.isActive = true;
     }
 
     public void complete() {
@@ -53,5 +57,9 @@ public class Assignment extends AuditableAbstractAggregateRoot<Assignment> {
 
     public void cancel() {
         this.status = AssignmentStatus.CANCELLED;
+    }
+
+    public void deactivate() {
+        this.isActive = false;
     }
 }
