@@ -40,3 +40,5 @@ PROMPTS.md
 ### Secretos locales (no commitear) ###
 application-dev.properties
 application-local.properties
+
+plannia.PublishSettings
