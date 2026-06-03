@@ -3,6 +3,7 @@ package upc.com.pe.backendplannia.iam.application.internal.queryservices;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import upc.com.pe.backendplannia.iam.domain.model.queries.GetUserByIdQuery;
+import upc.com.pe.backendplannia.iam.domain.model.readmodels.UserContactReadModel;
 import upc.com.pe.backendplannia.iam.domain.model.readmodels.UserDetailReadModel;
 import upc.com.pe.backendplannia.iam.domain.services.MemberProfileLookupPort;
 import upc.com.pe.backendplannia.iam.domain.services.UserQueryService;
@@ -45,6 +46,18 @@ public class UserQueryServiceImpl implements UserQueryService {
     public Optional<String> findNameById(Long userId) {
         return userRepository.findById(userId)
                 .map(user -> user.getName());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UserContactReadModel> findContactById(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> new UserContactReadModel(
+                        user.getId(),
+                        user.getName(),
+                        user.getEmail(),
+                        user.getRole()
+                ));
     }
 
     @Override

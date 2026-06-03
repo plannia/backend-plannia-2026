@@ -19,6 +19,7 @@ import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService
 import upc.com.pe.backendplannia.assignment.domain.services.TaskAssignmentPort;
 import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.AssignmentStatus;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
+import upc.com.pe.backendplannia.shared.domain.model.events.MemberAssignedToTaskEvent;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -58,6 +59,7 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
     public Optional<Assignment> handle(CreateAssignmentCommand command) {
         var savedAssignment = assignmentRepository.save(new Assignment(command));
         taskAssignmentPort.markAsAssigned(savedAssignment.getTaskId());
+        notifyMemberAssigned(savedAssignment);
         return Optional.of(savedAssignment);
     }
 
@@ -101,6 +103,7 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
         // Reservamos la carga del miembro al asignar; se libera al completar (ver handler del evento).
         memberWorkloadPort.reserveHours(command.userId(), taskRequirement.estimatedHours());
 
+        notifyMemberAssigned(savedAssignment);
         return Optional.of(savedAssignment);
     }
 
@@ -139,5 +142,12 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
 
         assignmentRepository.saveAll(assignments);
         return new ArrayList<>(affectedTaskIds);
+    }
+
+    // Avisa "se asignó a un miembro a una tarea". El contexto Notifications escucha este evento
+    // tras el commit (AFTER_COMMIT) para enviarle el correo; Assignment no conoce a Notifications.
+    private void notifyMemberAssigned(Assignment assignment) {
+        applicationEventPublisher.publishEvent(
+                new MemberAssignedToTaskEvent(assignment.getUserId(), assignment.getTaskId()));
     }
 }

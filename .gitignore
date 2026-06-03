@@ -32,3 +32,11 @@ build/
 ### VS Code ###
 .vscode/
 .claude
+
+### Guía personal (no compartir) ###
+GUIA.md
+PROMPTS.md
+
+### Secretos locales (no commitear) ###
+application-dev.properties
+application-local.properties
