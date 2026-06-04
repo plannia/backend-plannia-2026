@@ -3,6 +3,7 @@ package upc.com.pe.backendplannia.profile.application.internal.commandservices;
 import org.springframework.stereotype.Service;
 import upc.com.pe.backendplannia.profile.application.internal.outboundservices.ai.ProfileEmbeddingService;
 import upc.com.pe.backendplannia.profile.domain.model.aggregates.MemberProfile;
+import upc.com.pe.backendplannia.profile.domain.model.commands.CreateDefaultMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.CreateMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.ReduceActiveHoursCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.UpdateActiveHoursCommand;
@@ -15,6 +16,9 @@ import java.util.Optional;
 
 @Service
 public class MemberProfileCommandServiceImpl implements MemberProfileCommandService {
+    // Jornada semanal típica; el miembro la ajusta al completar su perfil.
+    private static final float DEFAULT_MAX_HOURS = 40f;
+
     private final MemberProfileRepository memberProfileRepository;
     private final ProfileEmbeddingService profileEmbeddingService;
 
@@ -38,6 +42,22 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
 
         var savedMemberProfile = memberProfileRepository.save(memberProfile);
         return Optional.of(savedMemberProfile);
+    }
+
+    @Override
+    public Optional<MemberProfile> handle(CreateDefaultMemberProfileCommand command) {
+        // Idempotente: si ya existe (p. ej. reintento del evento), no lo dupliques.
+        var existing = memberProfileRepository.findByUserId(command.userId());
+        if (existing.isPresent()) {
+            return existing;
+        }
+
+        // Perfil BASE: sin skills ni embeddings (no se llama a la IA con texto vacío). Se completa luego
+        // con UpdateMemberProfileCommand, que sí genera los embeddings. Un perfil sin embeddings NO es
+        // candidato (lo filtra el ProfileContextCandidateProfileProvider).
+        var memberProfile = new MemberProfile(new CreateMemberProfileCommand(
+                command.userId(), command.teamId(), DEFAULT_MAX_HOURS, "", ""));
+        return Optional.of(memberProfileRepository.save(memberProfile));
     }
 
     @Override

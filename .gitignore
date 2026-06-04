@@ -36,6 +36,7 @@ build/
 ### Guía personal (no compartir) ###
 GUIA.md
 PROMPTS.md
+DEPLOY.md
 
 ### Secretos locales (no commitear) ###
 application-dev.properties

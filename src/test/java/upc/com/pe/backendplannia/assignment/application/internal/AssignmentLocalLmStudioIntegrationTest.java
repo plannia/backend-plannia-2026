@@ -44,7 +44,10 @@ import static org.mockito.Mockito.when;
         TaskRequirementGateway.class,
         AssignmentLocalLmStudioIntegrationTest.LocalLmStudioEmbeddingTestConfiguration.class
 })
-@TestPropertySource(locations = "classpath:application.properties")
+// application-dev.properties (gitignored, segundo → gana) aporta la base-url y el token reales de tu
+// LM Studio local (spring.ai.openai.base-url / api-key). También se pueden overridear con las
+// system properties/env vars LMSTUDIO_BASE_URL / LMSTUDIO_API_KEY, que tienen prioridad.
+@TestPropertySource(locations = {"classpath:application.properties", "classpath:application-dev.properties"})
 @EnabledIfEnvironmentVariable(named = "LMSTUDIO_EMBEDDING_TEST", matches = "true")
 class AssignmentLocalLmStudioIntegrationTest {
     private static final Logger log = LoggerFactory.getLogger(AssignmentLocalLmStudioIntegrationTest.class);
@@ -119,7 +122,92 @@ class AssignmentLocalLmStudioIntegrationTest {
                 .containsExactly(BEST_USER_ID, SECOND_USER_ID, THIRD_USER_ID);
     }
 
+    // Verifica que el ranking depende de la TAREA: con los MISMOS candidatos pero una tarea de diseño,
+    // el orden se invierte y la diseñadora pasa a primera. Prueba que el embedding de la tarea manda.
+    @Test
+    void getTopCandidatesRanksDesignerFirstForDesignTask() {
+        log.info("Starting LM Studio task-driven ranking test (design task)");
+        var task = mockTask("Design a polished, responsive UI mockup in Figma with a cohesive visual "
+                + "design system, branding and animations for the product landing page");
+        var taskRequirement = taskRequirement(task);
+
+        var backendExpert = candidate(
+                BEST_USER_ID,
+                "Spring Boot REST APIs, Java controllers, services, JPA repositories and backend testing",
+                "Implemented production REST endpoints with Spring Boot, Hibernate and PostgreSQL",
+                "Backend architecture, API design and service-layer implementation",
+                2f,
+                8f
+        );
+        var designer = candidate(
+                THIRD_USER_ID,
+                "Figma wireframes, CSS layouts, visual design systems and frontend animations",
+                "Designed web mockups and improved responsive user interfaces",
+                "Product design, branding and UI prototyping",
+                0f,
+                8f
+        );
+        var candidates = List.of(backendExpert, designer);
+
+        logCandidateScores(candidates, taskRequirement);
+        when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(taskRequirement));
+        when(candidateProfileProvider.findByTeamId(TEAM_ID)).thenReturn(candidates);
+
+        var result = assignmentQueryService.handle(new GetTopCandidatesQuery(TASK_ID, TEAM_ID));
+
+        logRanking(result, taskRequirement);
+        assertThat(result)
+                .extracting(CandidateProfile::userId)
+                .containsExactly(THIRD_USER_ID, BEST_USER_ID);
+    }
+
+    // Verifica que el ranking depende de las VARIABLES DE PERFIL (carga): el candidato con mejor skill
+    // pero SIN horas disponibles (8/8 ocupadas) se excluye, y gana uno disponible aunque sea menos experto.
+    @Test
+    void getTopCandidatesExcludesOverloadedCandidateRegardlessOfSkill() {
+        log.info("Starting LM Studio availability-filtering test");
+        var task = mockTask(
+                "Build Spring Boot REST endpoints with JPA repositories and backend tests",
+                6
+        );
+        var taskRequirement = taskRequirement(task);
+
+        var overloadedExpert = candidate(
+                BEST_USER_ID,
+                "Spring Boot REST APIs, Java controllers, services, JPA repositories and backend testing",
+                "Implemented production REST endpoints with Spring Boot, Hibernate and PostgreSQL",
+                "Backend architecture, API design and service-layer implementation",
+                8f,   // 8 horas activas de 8 → availableHours = 0 < 6 estimadas → excluido
+                8f
+        );
+        var availableJunior = candidate(
+                SECOND_USER_ID,
+                "Java backend development, SQL databases and simple service integrations",
+                "Maintained backend services and created database queries for internal systems",
+                "Backend development and data modeling",
+                0f,   // 0 horas activas de 8 → availableHours = 8 >= 6 → disponible
+                8f
+        );
+        var candidates = List.of(overloadedExpert, availableJunior);
+
+        logCandidateScores(candidates, taskRequirement);
+        when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(taskRequirement));
+        when(candidateProfileProvider.findByTeamId(TEAM_ID)).thenReturn(candidates);
+
+        var result = assignmentQueryService.handle(new GetTopCandidatesQuery(TASK_ID, TEAM_ID));
+
+        logRanking(result, taskRequirement);
+        // El experto sobrecargado NO aparece pese a tener el mejor match de skill; gana el disponible.
+        assertThat(result)
+                .extracting(CandidateProfile::userId)
+                .containsExactly(SECOND_USER_ID);
+    }
+
     private MockTask mockTask(String description) {
+        return mockTask(description, 4);
+    }
+
+    private MockTask mockTask(String description, int estimatedHours) {
         log.info("Generating task embedding | taskId={} | description=\"{}\"", TASK_ID, description);
         var embedding = profileEmbeddingService.generateEmbedding(description);
         log.info(
@@ -132,7 +220,7 @@ class AssignmentLocalLmStudioIntegrationTest {
                 TASK_ID,
                 description,
                 embedding,
-                4,
+                estimatedHours,
                 "HIGH",
                 "MEDIUM"
         );

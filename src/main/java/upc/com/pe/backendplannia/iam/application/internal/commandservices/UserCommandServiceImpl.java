@@ -14,6 +14,7 @@ import upc.com.pe.backendplannia.iam.domain.model.commands.UpdateUserCommand;
 import upc.com.pe.backendplannia.iam.domain.services.UserCommandService;
 import upc.com.pe.backendplannia.iam.infrastructure.persistence.jpa.repositories.TeamRepository;
 import upc.com.pe.backendplannia.iam.infrastructure.persistence.jpa.repositories.UserRepository;
+import upc.com.pe.backendplannia.shared.domain.model.events.MemberRegisteredEvent;
 import upc.com.pe.backendplannia.shared.domain.model.events.UserDeletedEvent;
 
 import java.util.Optional;
@@ -52,8 +53,12 @@ public class UserCommandServiceImpl implements UserCommandService {
 
         var user = new User(command, team, hashingService.encode(command.password()));
         team.addUser(user);
+        var savedUser = userRepository.save(user);
 
-        return Optional.of(userRepository.save(user));
+        // Todo SignUp crea un MEMBER → Profile escucha esto y le crea un perfil base automáticamente.
+        applicationEventPublisher.publishEvent(new MemberRegisteredEvent(savedUser.getId(), team.getId()));
+
+        return Optional.of(savedUser);
     }
 
     @Override

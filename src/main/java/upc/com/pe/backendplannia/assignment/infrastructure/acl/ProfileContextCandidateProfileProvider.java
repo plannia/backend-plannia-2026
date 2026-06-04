@@ -32,8 +32,16 @@ public class ProfileContextCandidateProfileProvider implements CandidateProfileP
     @Override
     public List<CandidateProfile> findByTeamId(Long teamId) {
         return memberProfileQueryService.handle(new GetMemberProfilesByTeamIdQuery(teamId)).stream()
+                // Excluimos perfiles BASE/incompletos (sin embedding de habilidades): un miembro recién
+                // registrado que aún no cargó sus skills no es un candidato real hasta completar su perfil.
+                .filter(this::hasSkills)
                 .map(this::toCandidateProfile)
                 .toList();
+    }
+
+    private boolean hasSkills(MemberProfile memberProfile) {
+        return memberProfile.getEmbeddedAbilities() != null
+                && memberProfile.getEmbeddedAbilities().dimension() > 0;
     }
 
     private CandidateProfile toCandidateProfile(MemberProfile memberProfile) {
