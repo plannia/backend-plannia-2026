@@ -5,6 +5,7 @@ import upc.com.pe.backendplannia.profile.application.internal.outboundservices.a
 import upc.com.pe.backendplannia.profile.domain.model.aggregates.MemberProfile;
 import upc.com.pe.backendplannia.profile.domain.model.commands.CreateDefaultMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.CreateMemberProfileCommand;
+import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.repositories.ExperienceEntryRepository;
 import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.repositories.MemberProfileRepository;
 
 import java.util.Optional;
@@ -23,8 +24,9 @@ class DefaultMemberProfileCreationTests {
 
     private final MemberProfileRepository repository = mock(MemberProfileRepository.class);
     private final ProfileEmbeddingService embeddingService = mock(ProfileEmbeddingService.class);
+    private final ExperienceEntryRepository experienceEntryRepository = mock(ExperienceEntryRepository.class);
     private final MemberProfileCommandServiceImpl service =
-            new MemberProfileCommandServiceImpl(repository, embeddingService);
+            new MemberProfileCommandServiceImpl(repository, embeddingService, experienceEntryRepository);
 
     @Test
     void createsBaseProfileWithDefaultsAndWithoutCallingTheEmbeddingApi() {

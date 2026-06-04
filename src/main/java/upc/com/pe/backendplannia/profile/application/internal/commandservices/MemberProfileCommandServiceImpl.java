@@ -1,15 +1,18 @@
 package upc.com.pe.backendplannia.profile.application.internal.commandservices;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import upc.com.pe.backendplannia.profile.application.internal.outboundservices.ai.ProfileEmbeddingService;
 import upc.com.pe.backendplannia.profile.domain.model.aggregates.MemberProfile;
 import upc.com.pe.backendplannia.profile.domain.model.commands.CreateDefaultMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.CreateMemberProfileCommand;
+import upc.com.pe.backendplannia.profile.domain.model.commands.DeleteMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.ReduceActiveHoursCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.UpdateActiveHoursCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.UpdateMaxHoursCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.UpdateMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.services.MemberProfileCommandService;
+import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.repositories.ExperienceEntryRepository;
 import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.repositories.MemberProfileRepository;
 
 import java.util.Optional;
@@ -21,13 +24,16 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
 
     private final MemberProfileRepository memberProfileRepository;
     private final ProfileEmbeddingService profileEmbeddingService;
+    private final ExperienceEntryRepository experienceEntryRepository;
 
     public MemberProfileCommandServiceImpl(
             MemberProfileRepository memberProfileRepository,
-            ProfileEmbeddingService profileEmbeddingService
+            ProfileEmbeddingService profileEmbeddingService,
+            ExperienceEntryRepository experienceEntryRepository
     ) {
         this.memberProfileRepository = memberProfileRepository;
         this.profileEmbeddingService = profileEmbeddingService;
+        this.experienceEntryRepository = experienceEntryRepository;
     }
 
     @Override
@@ -58,6 +64,16 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
         var memberProfile = new MemberProfile(new CreateMemberProfileCommand(
                 command.userId(), command.teamId(), DEFAULT_MAX_HOURS, "", ""));
         return Optional.of(memberProfileRepository.save(memberProfile));
+    }
+
+    // Borra todo rastro del miembro en Profile: sus entradas de experiencia y su perfil. Dos escrituras
+    // → @Transactional para que confirmen/reviertan juntas. Idempotente (no falla si no hay perfil).
+    @Override
+    @Transactional
+    public void handle(DeleteMemberProfileCommand command) {
+        experienceEntryRepository.deleteByUserId(command.userId());
+        memberProfileRepository.findByUserId(command.userId())
+                .ifPresent(memberProfileRepository::delete);
     }
 
     @Override

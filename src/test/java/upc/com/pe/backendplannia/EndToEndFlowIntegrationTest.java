@@ -187,23 +187,22 @@ class EndToEndFlowIntegrationTest {
     // FLUJO 4 — Borrar usuario → desactiva asignaciones (fan-out + cascada de eventos)
     // ---------------------------------------------------------------------------------------------
     @Test
-    @DisplayName("Borrar usuario: desactiva sus asignaciones automáticamente (y deja perfil huérfano: GAP)")
-    void deletingUserDeactivatesAssignments() {
+    @DisplayName("Borrar usuario: desactiva asignaciones (fan-out) Y elimina su perfil (sin huérfanos)")
+    void deletingUserDeactivatesAssignmentsAndRemovesProfile() {
         var team = createTeam();
         var backendUserId = onboardMember(team, "Backend Dev", BACKEND_ABILITIES, 40f);
         var taskId = createBackendTask(team, 4);
         assignmentCommandService.handle(new ConfirmRecommendationCommand(taskId, backendUserId));
 
-        // Acción: borrar al usuario → UserDeletedEvent (fan-out: Assignment + Project).
+        // Acción: borrar al usuario → UserDeletedEvent (fan-out: Assignment + Project + Profile).
         userCommandService.handle(new DeleteUserCommand(backendUserId));
 
         // Automático: las asignaciones del usuario quedan inactivas.
         var assignment = assignmentRepository.findByTaskId(taskId).getFirst();
         assertThat(assignment.isActive()).isFalse();
 
-        // GAP detectado: el MemberProfile NO se elimina al borrar el usuario → queda huérfano y
-        // seguiría apareciendo como candidato. (Falta un handler de UserDeletedEvent en Profile.)
-        assertThat(memberProfileRepository.findByUserId(backendUserId)).isPresent();
+        // GAP C corregido: el MemberProfile se elimina → ya no queda huérfano ni aparece como candidato.
+        assertThat(memberProfileRepository.findByUserId(backendUserId)).isEmpty();
     }
 
     // ---------------------------------------------------------------------------------------------

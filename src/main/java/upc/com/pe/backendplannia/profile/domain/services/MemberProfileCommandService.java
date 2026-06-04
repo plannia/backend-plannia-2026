@@ -3,6 +3,7 @@ package upc.com.pe.backendplannia.profile.domain.services;
 import upc.com.pe.backendplannia.profile.domain.model.aggregates.MemberProfile;
 import upc.com.pe.backendplannia.profile.domain.model.commands.CreateDefaultMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.CreateMemberProfileCommand;
+import upc.com.pe.backendplannia.profile.domain.model.commands.DeleteMemberProfileCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.ReduceActiveHoursCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.UpdateActiveHoursCommand;
 import upc.com.pe.backendplannia.profile.domain.model.commands.UpdateMaxHoursCommand;
@@ -14,6 +15,8 @@ public interface MemberProfileCommandService {
     Optional<MemberProfile> handle(CreateMemberProfileCommand command);
 
     Optional<MemberProfile> handle(CreateDefaultMemberProfileCommand command);
+
+    void handle(DeleteMemberProfileCommand command);
 
     Optional<MemberProfile> handle(UpdateMemberProfileCommand command);
 

@@ -14,4 +14,6 @@ public interface ExperienceEntryRepository extends JpaRepository<ExperienceEntry
     List<ExperienceEntry> findByTaskId(Long taskId);
 
     Optional<ExperienceEntry> findByUserIdAndTaskId(Long userId, Long taskId);
+
+    void deleteByUserId(Long userId);
 }
