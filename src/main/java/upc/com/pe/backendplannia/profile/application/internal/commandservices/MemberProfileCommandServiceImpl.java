@@ -14,6 +14,7 @@ import upc.com.pe.backendplannia.profile.domain.model.commands.UpdateMemberProfi
 import upc.com.pe.backendplannia.profile.domain.services.MemberProfileCommandService;
 import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.repositories.ExperienceEntryRepository;
 import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.repositories.MemberProfileRepository;
+import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVector;
 
 import java.util.Optional;
 
@@ -80,7 +81,7 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
     public Optional<MemberProfile> handle(UpdateMemberProfileCommand command) {
         var result = memberProfileRepository.findByUserId(command.userId());
         if (result.isEmpty()) {
-            throw new IllegalArgumentException("Member profile with this user id not found");
+            return Optional.empty();
         }
 
         var memberProfile = result.get();
@@ -90,15 +91,26 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
         }
         if (command.abilities() != null) {
             memberProfile.updateAbilities(command.abilities());
-            memberProfile.updateAbilityEmbedding(profileEmbeddingService.generateEmbedding(command.abilities()));
+            memberProfile.updateAbilityEmbedding(generateEmbeddingOrThrow(command.abilities(), "abilities"));
         }
         if (command.interests() != null) {
             memberProfile.updateInterests(command.interests());
-            memberProfile.updateInterestEmbedding(profileEmbeddingService.generateEmbedding(command.interests()));
+            memberProfile.updateInterestEmbedding(generateEmbeddingOrThrow(command.interests(), "interests"));
         }
 
         var savedMemberProfile = memberProfileRepository.save(memberProfile);
         return Optional.of(savedMemberProfile);
+    }
+
+    private EmbeddingVector generateEmbeddingOrThrow(String text, String fieldName) {
+        try {
+            return profileEmbeddingService.generateEmbedding(text);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException(
+                    "Failed to generate " + fieldName + " embedding. Check AI configuration and try again.",
+                    exception
+            );
+        }
     }
 
     @Override

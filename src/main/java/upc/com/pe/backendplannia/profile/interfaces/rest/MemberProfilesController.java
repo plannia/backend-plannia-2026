@@ -161,7 +161,8 @@ public class MemberProfilesController {
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = MessageResource.class)
                     )
-            )
+            ),
+            @ApiResponse(responseCode = "404", description = "Member profile not found")
     })
     public ResponseEntity<?> updateMemberProfile(
             @PathVariable Long userId,
@@ -170,7 +171,9 @@ public class MemberProfilesController {
         try {
             var command = UpdateMemberProfileCommandFromResourceAssembler.toCommandFromResource(userId, resource);
             var updatedMemberProfile = memberProfileCommandService.handle(command);
-            if (updatedMemberProfile.isEmpty()) return ResponseEntity.notFound().build();
+            if (updatedMemberProfile.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
             var updatedResource = MemberProfileResourceFromEntityAssembler.toResourceFromEntity(updatedMemberProfile.get());
             return ResponseEntity.ok(updatedResource);
         } catch (IllegalArgumentException e) {
