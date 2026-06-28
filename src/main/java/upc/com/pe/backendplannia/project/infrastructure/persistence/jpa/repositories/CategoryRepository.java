@@ -11,4 +11,6 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     List<Category> findByMembers_Id(Long userId);
 
     List<Category> findByTeamId_Id(Long teamId);
+
+    List<Category> findByGanttSpreadsheetIdIsNotNull();
 }

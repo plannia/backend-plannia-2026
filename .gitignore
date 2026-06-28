@@ -43,3 +43,4 @@ application-dev.properties
 application-local.properties
 
 plannia.PublishSettings
+.env

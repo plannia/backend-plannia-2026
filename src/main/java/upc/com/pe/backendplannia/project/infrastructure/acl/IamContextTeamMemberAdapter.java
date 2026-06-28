@@ -4,6 +4,8 @@ import org.springframework.stereotype.Service;
 import upc.com.pe.backendplannia.iam.infrastructure.persistence.jpa.repositories.UserRepository;
 import upc.com.pe.backendplannia.project.domain.services.TeamMemberPort;
 
+import upc.com.pe.backendplannia.project.domain.model.readmodels.TeamMemberSnapshot;
+
 import java.util.Optional;
 
 /**
@@ -33,5 +35,17 @@ public class IamContextTeamMemberAdapter implements TeamMemberPort {
     public Optional<String> findNameByUserId(Long userId) {
         return userRepository.findById(userId)
                 .map(user -> user.getName());
+    }
+
+    @Override
+    public Optional<String> findEmailByUserId(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> user.getEmail());
+    }
+
+    @Override
+    public Optional<TeamMemberSnapshot> findByUserId(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> new TeamMemberSnapshot(user.getId(), user.getName(), user.getEmail()));
     }
 }

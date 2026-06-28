@@ -19,7 +19,10 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import upc.com.pe.backendplannia.project.application.internal.gantt.GanttChartIntegrationException;
+import upc.com.pe.backendplannia.project.domain.model.commands.CreateCategoryGanttCommand;
 import upc.com.pe.backendplannia.project.domain.model.commands.DeleteCategoryMemberCommand;
+import upc.com.pe.backendplannia.project.domain.services.GanttChartCommandService;
 import upc.com.pe.backendplannia.project.domain.model.queries.GetAllCategoriesQuery;
 import upc.com.pe.backendplannia.project.domain.services.CategoryCommandService;
 import upc.com.pe.backendplannia.project.domain.services.CategoryQueryService;
@@ -41,13 +44,16 @@ import java.util.List;
 public class CategoryController {
     private final CategoryCommandService categoryCommandService;
     private final CategoryQueryService categoryQueryService;
+    private final GanttChartCommandService ganttChartCommandService;
 
     public CategoryController(
             CategoryCommandService categoryCommandService,
-            CategoryQueryService categoryQueryService
+            CategoryQueryService categoryQueryService,
+            GanttChartCommandService ganttChartCommandService
     ) {
         this.categoryCommandService = categoryCommandService;
         this.categoryQueryService = categoryQueryService;
+        this.ganttChartCommandService = ganttChartCommandService;
     }
 
     @GetMapping("/teams/{teamId}")
@@ -204,8 +210,50 @@ public class CategoryController {
         return ResponseEntity.ok(CategoryResourceFromEntityAssembler.toResourceFromEntity(category.get()));
     }
 
+    @PostMapping("/{categoryId}/gantt")
+    @Operation(summary = "Create or retrieve Gantt chart Google Sheet for category")
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Gantt chart created or retrieved",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = CategoryResource.class)
+                    )
+            ),
+            @ApiResponse(responseCode = "404", description = "Category not found"),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Bad request",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = MessageResource.class)
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "502",
+                    description = "Google Sheets integration failure",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = MessageResource.class)
+                    )
+            )
+    })
+    public ResponseEntity<CategoryResource> createCategoryGantt(@PathVariable Long categoryId) {
+        var category = ganttChartCommandService.handle(new CreateCategoryGanttCommand(categoryId));
+        if (category.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(CategoryResourceFromEntityAssembler.toResourceFromEntity(category.get()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<MessageResource> handleIllegalArgument(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(new MessageResource(exception.getMessage()));
+    }
+
+    @ExceptionHandler(GanttChartIntegrationException.class)
+    public ResponseEntity<MessageResource> handleGanttIntegration(GanttChartIntegrationException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new MessageResource(exception.getMessage()));
     }
 }

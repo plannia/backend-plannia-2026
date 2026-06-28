@@ -45,6 +45,9 @@ public class Category extends AuditableAbstractAggregateRoot<Category> {
     @OneToMany(mappedBy = "category", fetch = FetchType.LAZY)
     private List<Task> tasks = new ArrayList<>();
 
+    private String ganttSpreadsheetId;
+    private String ganttSpreadsheetUrl;
+
     public Category() {}
 
     public Category(CreateCategoryCommand command) {
@@ -84,6 +87,15 @@ public class Category extends AuditableAbstractAggregateRoot<Category> {
         if (tasks.stream().allMatch(task -> task.getStatus() == Status.DONE)) {
             this.status = Status.DONE;
         }
+    }
+
+    public boolean hasGanttChart() {
+        return ganttSpreadsheetId != null && !ganttSpreadsheetId.isBlank();
+    }
+
+    public void attachGanttChart(String spreadsheetId, String spreadsheetUrl) {
+        this.ganttSpreadsheetId = spreadsheetId;
+        this.ganttSpreadsheetUrl = spreadsheetUrl;
     }
 
     public void update(UpdateCategoryCommand command) {

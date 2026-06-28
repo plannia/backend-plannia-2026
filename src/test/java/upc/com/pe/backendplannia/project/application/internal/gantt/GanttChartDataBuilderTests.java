@@ -1,0 +1,103 @@
+package upc.com.pe.backendplannia.project.application.internal.gantt;
+
+import org.junit.jupiter.api.Test;
+import upc.com.pe.backendplannia.project.domain.model.aggregates.Category;
+import upc.com.pe.backendplannia.project.domain.model.aggregates.Task;
+import upc.com.pe.backendplannia.project.domain.model.commands.CreateCategoryCommand;
+import upc.com.pe.backendplannia.project.domain.model.commands.CreateTaskCommand;
+import upc.com.pe.backendplannia.project.domain.model.readmodels.TeamMemberSnapshot;
+import upc.com.pe.backendplannia.project.domain.model.valueobjects.Status;
+import upc.com.pe.backendplannia.project.domain.model.valueobjects.UserId;
+import upc.com.pe.backendplannia.project.domain.services.AssignmentActivityPort;
+import upc.com.pe.backendplannia.project.domain.services.TeamMemberPort;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class GanttChartDataBuilderTests {
+    private static final Long MEMBER_ONE_ID = 11L;
+    private static final Long MEMBER_TWO_ID = 12L;
+
+    private final AssignmentActivityPort assignmentActivityPort = mock(AssignmentActivityPort.class);
+    private final TeamMemberPort teamMemberPort = mock(TeamMemberPort.class);
+    private final GanttChartDataBuilder builder = new GanttChartDataBuilder(assignmentActivityPort, teamMemberPort);
+
+    @Test
+    void buildsSnapshotWithEligibleTasksOnly() {
+        var category = categoryWithMembers();
+        var inProgressTask = task(category, "In progress task", Status.IN_PROGRESS,
+                LocalDateTime.of(2026, 6, 20, 10, 0),
+                null,
+                LocalDateTime.of(2026, 6, 30, 18, 0));
+        var doneTask = task(category, "Done task", Status.DONE,
+                LocalDateTime.of(2026, 6, 18, 9, 0),
+                LocalDateTime.of(2026, 6, 22, 17, 0),
+                LocalDateTime.of(2026, 6, 25, 18, 0));
+        var todoTask = task(category, "Todo task", Status.TO_DO, null, null, LocalDateTime.of(2026, 7, 1, 18, 0));
+
+        when(assignmentActivityPort.findLatestAssignmentUserId(inProgressTask.getId())).thenReturn(Optional.of(MEMBER_ONE_ID));
+        when(assignmentActivityPort.findLatestAssignmentUserId(doneTask.getId())).thenReturn(Optional.of(MEMBER_TWO_ID));
+        when(teamMemberPort.findByUserId(MEMBER_ONE_ID))
+                .thenReturn(Optional.of(new TeamMemberSnapshot(MEMBER_ONE_ID, "Alice", "alice@test.com")));
+        when(teamMemberPort.findByUserId(MEMBER_TWO_ID))
+                .thenReturn(Optional.of(new TeamMemberSnapshot(MEMBER_TWO_ID, "Bob", "bob@test.com")));
+        when(teamMemberPort.findNameByUserId(MEMBER_ONE_ID)).thenReturn(Optional.of("Alice"));
+        when(teamMemberPort.findNameByUserId(MEMBER_TWO_ID)).thenReturn(Optional.of("Bob"));
+
+        var snapshot = builder.build(category, List.of(inProgressTask, doneTask, todoTask));
+
+        assertThat(snapshot.taskRows()).hasSize(2);
+        assertThat(snapshot.taskRows().get(0).title()).isEqualTo("Done task");
+        assertThat(snapshot.taskRows().get(1).progressLabel()).isNotEqualTo("100%");
+        assertThat(snapshot.legends()).hasSize(2);
+        assertThat(snapshot.dateColumns()).isNotEmpty();
+    }
+
+    @Test
+    void usesDefaultDateRangeWhenThereAreNoEligibleTasks() {
+        var category = categoryWithMembers();
+        var snapshot = builder.build(category, List.of());
+
+        assertThat(snapshot.taskRows()).isEmpty();
+        assertThat(snapshot.dateColumns()).hasSize(GanttChartDataBuilder.DEFAULT_RANGE_DAYS);
+    }
+
+    private Category categoryWithMembers() {
+        var category = new Category(new CreateCategoryCommand(1L, "Planning", LocalDateTime.of(2026, 7, 31, 18, 0)));
+        category.setId(99L);
+        category.addMember(new UserId(MEMBER_ONE_ID));
+        category.addMember(new UserId(MEMBER_TWO_ID));
+        return category;
+    }
+
+    private Task task(
+            Category category,
+            String title,
+            Status status,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            LocalDateTime limitDate
+    ) {
+        var task = new Task(new CreateTaskCommand(
+                category.getId(),
+                title,
+                "desc",
+                4,
+                "HIGH",
+                "MEDIUM",
+                limitDate,
+                List.of(),
+                List.of()
+        ), category);
+        task.setId((long) title.hashCode());
+        task.setStatus(status);
+        task.setStartTime(startTime);
+        task.setEndTime(endTime);
+        return task;
+    }
+}

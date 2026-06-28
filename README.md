@@ -335,3 +335,35 @@ Un contexto **nunca** importa el `domain`/`infrastructure` de otro desde su prop
   reciben como números. Publica eventos al eliminar miembros (política "miembro retirado").
 - **Notification** → escucha eventos (`AssignmentCompletedEvent`, etc.) y envía correos (Brevo)
   vía un adaptador en su `infrastructure`.
+
+---
+
+## Gantt en Google Sheets
+
+Integración opcional para generar un diagrama Gantt por categoría en Google Sheets.
+
+### Variables de entorno
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `GANTT_GOOGLE_ENABLED` | `false` | `true` usa Google API real; `false` usa adapter de log |
+| `GANTT_GOOGLE_CREDENTIALS_JSON` | vacío | JSON de la service account (una sola línea) |
+| `GANTT_SHEET_ID` | vacío | ID de la hoja plantilla Gantt; se copia al crear una por categoría |
+
+La plantilla debe estar **compartida** con el email de la service account (p. ej. `...@....iam.gserviceaccount.com`) con al menos permiso de lector.
+
+El scheduler sincroniza todos los días a las **12:00** (`America/Lima`).
+
+### Endpoint
+
+```
+POST /api/v1/categories/{categoryId}/gantt
+```
+
+Devuelve `CategoryResource` con `ganttSpreadsheetUrl`. Requiere al menos un miembro en la categoría.
+
+### Setup GCP (resumen)
+
+1. Habilitar Google Sheets API y Google Drive API.
+2. Crear service account y descargar clave JSON.
+3. Configurar `GANTT_GOOGLE_CREDENTIALS_JSON` en local/Azure (no commitear).

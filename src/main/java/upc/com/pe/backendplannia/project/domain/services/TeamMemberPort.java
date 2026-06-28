@@ -1,5 +1,7 @@
 package upc.com.pe.backendplannia.project.domain.services;
 
+import upc.com.pe.backendplannia.project.domain.model.readmodels.TeamMemberSnapshot;
+
 import java.util.Optional;
 
 /**
@@ -11,4 +13,8 @@ public interface TeamMemberPort {
     Optional<Long> findTeamIdByUserId(Long userId);
 
     Optional<String> findNameByUserId(Long userId);
+
+    Optional<String> findEmailByUserId(Long userId);
+
+    Optional<TeamMemberSnapshot> findByUserId(Long userId);
 }

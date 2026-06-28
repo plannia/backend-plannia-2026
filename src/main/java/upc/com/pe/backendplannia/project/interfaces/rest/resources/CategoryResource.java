@@ -11,6 +11,7 @@ public record CategoryResource(
         String name,
         LocalDateTime limitDate,
         Status status,
-        List<Long> memberIds
+        List<Long> memberIds,
+        String ganttSpreadsheetUrl
 ) {
 }

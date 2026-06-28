@@ -18,7 +18,8 @@ public class CategoryResourceFromEntityAssembler {
                 category.getName(),
                 category.getLimitDate(),
                 category.getStatus(),
-                memberIds
+                memberIds,
+                category.getGanttSpreadsheetUrl()
         );
     }
 }
