@@ -254,13 +254,6 @@ public class CategoryController {
 
     @ExceptionHandler(GanttChartIntegrationException.class)
     public ResponseEntity<MessageResource> handleGanttIntegration(GanttChartIntegrationException exception) {
-        var message = exception.getMessage();
-        if (exception.getCause() != null && exception.getCause().getMessage() != null) {
-            var causeMessage = exception.getCause().getMessage();
-            if (message != null && !message.contains(causeMessage)) {
-                message = message + " (" + causeMessage + ")";
-            }
-        }
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new MessageResource(message));
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new MessageResource(exception.getMessage()));
     }
 }

@@ -66,6 +66,12 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         if (properties.getCredentialsJson() == null || properties.getCredentialsJson().isBlank()) {
             throw new GanttChartIntegrationException("gantt.google.credentials-json is required when gantt.google.enabled=true");
         }
+        if (!properties.hasOutputFolder()) {
+            throw new GanttChartIntegrationException(
+                    "gantt.google.output-folder-id (GANTT_OUTPUT_FOLDER_ID) is required. "
+                            + "Service accounts cannot use My Drive storage; set a folder ID inside a Shared Drive "
+                            + "where the service account is Content manager.");
+        }
 
         try {
             var credentials = GoogleCredentials.fromStream(
@@ -86,6 +92,9 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
             driveService = new Drive.Builder(transport, jsonFactory, requestInitializer)
                     .setApplicationName(APPLICATION_NAME)
                     .build();
+            validateOutputFolder();
+        } catch (GanttChartIntegrationException exception) {
+            throw exception;
         } catch (IOException | GeneralSecurityException exception) {
             throw new GanttChartIntegrationException("Failed to initialize Google Sheets client", exception);
         }
@@ -94,6 +103,10 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     @Override
     public GanttSpreadsheetResult createSpreadsheet(String title) {
         try {
+            // Always create in the Shared Drive folder; syncContent fills the Gantt data programmatically.
+            if (properties.hasOutputFolder()) {
+                return createEmptySpreadsheet(title);
+            }
             if (properties.hasTemplateSheet()) {
                 return copyTemplateSpreadsheet(title);
             }
@@ -101,6 +114,31 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         } catch (IOException exception) {
             throw new GanttChartIntegrationException(
                     "Failed to create Google Spreadsheet: " + describeCreateFailure(exception),
+                    exception
+            );
+        }
+    }
+
+    private void validateOutputFolder() throws IOException {
+        try {
+            var folder = driveService.files().get(properties.getOutputFolderId())
+                    .setSupportsAllDrives(true)
+                    .setFields("id,name,driveId,mimeType,trashed")
+                    .execute();
+            if (Boolean.TRUE.equals(folder.getTrashed())) {
+                throw new GanttChartIntegrationException(
+                        "GANTT_OUTPUT_FOLDER_ID points to a trashed folder: " + properties.getOutputFolderId());
+            }
+            if (folder.getDriveId() == null || folder.getDriveId().isBlank()) {
+                throw new GanttChartIntegrationException(
+                        "GANTT_OUTPUT_FOLDER_ID must be a folder inside a Google Shared Drive (Unidad compartida), "
+                                + "not My Drive. Folder '" + folder.getName() + "' is not on a Shared Drive.");
+            }
+        } catch (IOException exception) {
+            throw new GanttChartIntegrationException(
+                    "Cannot access Gantt output folder " + properties.getOutputFolderId() + ": "
+                            + GoogleApiIOExceptionHelper.describe(exception)
+                            + ". Ensure the service account is Content manager on the Shared Drive.",
                     exception
             );
         }
