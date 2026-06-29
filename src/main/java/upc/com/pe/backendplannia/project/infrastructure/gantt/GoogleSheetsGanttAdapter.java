@@ -111,7 +111,10 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
             var spreadsheetUrl = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit";
             return new GanttSpreadsheetResult(spreadsheetId, spreadsheetUrl);
         } catch (IOException exception) {
-            throw new GanttChartIntegrationException("Failed to create Google Spreadsheet", exception);
+            throw new GanttChartIntegrationException(
+                    "Failed to create Google Spreadsheet: " + GoogleApiIOExceptionHelper.describe(exception),
+                    exception
+            );
         }
     }
 
@@ -131,7 +134,10 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
             } catch (IOException exception) {
                 var message = exception.getMessage() == null ? "" : exception.getMessage();
                 if (!message.contains("already exists")) {
-                    throw new GanttChartIntegrationException("Failed to share spreadsheet with " + email, exception);
+                    throw new GanttChartIntegrationException(
+                            "Failed to share spreadsheet with " + email + ": " + GoogleApiIOExceptionHelper.describe(exception),
+                            exception
+                    );
                 }
             }
         }
@@ -163,7 +169,10 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
                         .execute();
             }
         } catch (IOException exception) {
-            throw new GanttChartIntegrationException("Failed to sync Gantt chart content", exception);
+            throw new GanttChartIntegrationException(
+                    "Failed to sync Gantt chart content: " + GoogleApiIOExceptionHelper.describe(exception),
+                    exception
+            );
         }
     }
 
