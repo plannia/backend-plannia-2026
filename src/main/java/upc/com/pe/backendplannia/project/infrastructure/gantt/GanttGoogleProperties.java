@@ -7,6 +7,8 @@ public class GanttGoogleProperties {
     private boolean enabled = false;
     private String credentialsJson = "";
     private String templateSheetId = "";
+    /** Folder ID inside a Shared Drive where new Gantt copies are created (service accounts have no My Drive quota). */
+    private String outputFolderId = "";
 
     public boolean isEnabled() {
         return enabled;
@@ -32,7 +34,19 @@ public class GanttGoogleProperties {
         this.templateSheetId = templateSheetId;
     }
 
+    public String getOutputFolderId() {
+        return outputFolderId;
+    }
+
+    public void setOutputFolderId(String outputFolderId) {
+        this.outputFolderId = outputFolderId;
+    }
+
     public boolean hasTemplateSheet() {
         return templateSheetId != null && !templateSheetId.isBlank();
+    }
+
+    public boolean hasOutputFolder() {
+        return outputFolderId != null && !outputFolderId.isBlank();
     }
 }

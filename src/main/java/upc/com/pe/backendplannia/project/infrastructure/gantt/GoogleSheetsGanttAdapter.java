@@ -66,6 +66,12 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         if (properties.getCredentialsJson() == null || properties.getCredentialsJson().isBlank()) {
             throw new GanttChartIntegrationException("gantt.google.credentials-json is required when gantt.google.enabled=true");
         }
+        if (!properties.hasOutputFolder()) {
+            throw new GanttChartIntegrationException(
+                    "gantt.google.output-folder-id (GANTT_OUTPUT_FOLDER_ID) is required. "
+                            + "Service accounts cannot use My Drive storage; set a folder ID inside a Shared Drive "
+                            + "where the service account is Content manager.");
+        }
 
         try {
             var credentials = GoogleCredentials.fromStream(
@@ -86,6 +92,9 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
             driveService = new Drive.Builder(transport, jsonFactory, requestInitializer)
                     .setApplicationName(APPLICATION_NAME)
                     .build();
+            validateOutputFolder();
+        } catch (GanttChartIntegrationException exception) {
+            throw exception;
         } catch (IOException | GeneralSecurityException exception) {
             throw new GanttChartIntegrationException("Failed to initialize Google Sheets client", exception);
         }
@@ -94,28 +103,94 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     @Override
     public GanttSpreadsheetResult createSpreadsheet(String title) {
         try {
-            if (properties.hasTemplateSheet()) {
-                var copied = driveService.files()
-                        .copy(properties.getTemplateSheetId(), new File().setName(title))
-                        .setSupportsAllDrives(true)
-                        .execute();
-                var spreadsheetId = copied.getId();
-                var spreadsheetUrl = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit";
-                return new GanttSpreadsheetResult(spreadsheetId, spreadsheetUrl);
+            // Always create in the Shared Drive folder; syncContent fills the Gantt data programmatically.
+            if (properties.hasOutputFolder()) {
+                return createEmptySpreadsheet(title);
             }
-
-            var spreadsheet = new Spreadsheet()
-                    .setProperties(new SpreadsheetProperties().setTitle(title));
-            var created = sheetsService.spreadsheets().create(spreadsheet).execute();
-            var spreadsheetId = created.getSpreadsheetId();
-            var spreadsheetUrl = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit";
-            return new GanttSpreadsheetResult(spreadsheetId, spreadsheetUrl);
+            if (properties.hasTemplateSheet()) {
+                return copyTemplateSpreadsheet(title);
+            }
+            return createEmptySpreadsheet(title);
         } catch (IOException exception) {
             throw new GanttChartIntegrationException(
-                    "Failed to create Google Spreadsheet: " + GoogleApiIOExceptionHelper.describe(exception),
+                    "Failed to create Google Spreadsheet: " + describeCreateFailure(exception),
                     exception
             );
         }
+    }
+
+    private void validateOutputFolder() throws IOException {
+        try {
+            var folder = driveService.files().get(properties.getOutputFolderId())
+                    .setSupportsAllDrives(true)
+                    .setFields("id,name,driveId,mimeType,trashed")
+                    .execute();
+            if (Boolean.TRUE.equals(folder.getTrashed())) {
+                throw new GanttChartIntegrationException(
+                        "GANTT_OUTPUT_FOLDER_ID points to a trashed folder: " + properties.getOutputFolderId());
+            }
+            if (folder.getDriveId() == null || folder.getDriveId().isBlank()) {
+                throw new GanttChartIntegrationException(
+                        "GANTT_OUTPUT_FOLDER_ID must be a folder inside a Google Shared Drive (Unidad compartida), "
+                                + "not My Drive. Folder '" + folder.getName() + "' is not on a Shared Drive.");
+            }
+        } catch (IOException exception) {
+            throw new GanttChartIntegrationException(
+                    "Cannot access Gantt output folder " + properties.getOutputFolderId() + ": "
+                            + GoogleApiIOExceptionHelper.describe(exception)
+                            + ". Ensure the service account is Content manager on the Shared Drive.",
+                    exception
+            );
+        }
+    }
+
+    private GanttSpreadsheetResult copyTemplateSpreadsheet(String title) throws IOException {
+        var metadata = new File().setName(title);
+        applyOutputFolder(metadata);
+        var copied = driveService.files()
+                .copy(properties.getTemplateSheetId(), metadata)
+                .setSupportsAllDrives(true)
+                .execute();
+        return toSpreadsheetResult(copied.getId());
+    }
+
+    private GanttSpreadsheetResult createEmptySpreadsheet(String title) throws IOException {
+        if (properties.hasOutputFolder()) {
+            var metadata = new File()
+                    .setName(title)
+                    .setMimeType("application/vnd.google-apps.spreadsheet");
+            metadata.setParents(List.of(properties.getOutputFolderId()));
+            var created = driveService.files()
+                    .create(metadata)
+                    .setSupportsAllDrives(true)
+                    .execute();
+            return toSpreadsheetResult(created.getId());
+        }
+
+        var spreadsheet = new Spreadsheet()
+                .setProperties(new SpreadsheetProperties().setTitle(title));
+        var created = sheetsService.spreadsheets().create(spreadsheet).execute();
+        return toSpreadsheetResult(created.getSpreadsheetId());
+    }
+
+    private void applyOutputFolder(File metadata) {
+        if (properties.hasOutputFolder()) {
+            metadata.setParents(List.of(properties.getOutputFolderId()));
+        }
+    }
+
+    private GanttSpreadsheetResult toSpreadsheetResult(String spreadsheetId) {
+        var spreadsheetUrl = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit";
+        return new GanttSpreadsheetResult(spreadsheetId, spreadsheetUrl);
+    }
+
+    private String describeCreateFailure(IOException exception) {
+        var detail = GoogleApiIOExceptionHelper.describe(exception);
+        if (detail.contains("storageQuotaExceeded") || detail.toLowerCase(Locale.ROOT).contains("storage quota")) {
+            return detail + ". Service accounts cannot use personal Drive storage; set GANTT_OUTPUT_FOLDER_ID to a folder "
+                    + "inside a Shared Drive where the service account is Content manager (or move the template there).";
+        }
+        return detail;
     }
 
     @Override

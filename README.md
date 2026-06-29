@@ -349,10 +349,13 @@ Integración opcional para generar un diagrama Gantt por categoría en Google Sh
 | `GANTT_GOOGLE_ENABLED` | `false` | `true` usa Google API real; `false` usa adapter de log |
 | `GANTT_GOOGLE_CREDENTIALS_JSON` | vacío | JSON de la service account (una sola línea) |
 | `GANTT_SHEET_ID` | vacío | ID de la hoja plantilla Gantt; se copia al crear una por categoría |
+| `GANTT_OUTPUT_FOLDER_ID` | vacío | ID de carpeta dentro de una **Unidad compartida** (Shared Drive) donde se crean las copias Gantt |
 
 Estas variables se inyectan como **App Settings / variables de entorno**; Spring las aplica por relaxed binding (`GANTT_GOOGLE_ENABLED` → `gantt.google.enabled`, etc.). No van en `application.properties`.
 
 La plantilla debe estar **compartida** con el email de la service account (p. ej. `...@....iam.gserviceaccount.com`) con al menos permiso de lector.
+
+**Cuota de Drive:** las service accounts no tienen almacenamiento en "Mi unidad". Si aparece `storageQuotaExceeded`, crea una Unidad compartida (requiere Google Workspace), añade la service account como **Colaborador de contenido**, crea una carpeta dentro y configura `GANTT_OUTPUT_FOLDER_ID` con el ID de esa carpeta (visible en la URL de la carpeta en Drive).
 
 El scheduler sincroniza todos los días a las **12:00** (`America/Lima`).
 
