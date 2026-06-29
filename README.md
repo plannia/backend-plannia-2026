@@ -350,6 +350,8 @@ Integración opcional para generar un diagrama Gantt por categoría en Google Sh
 | `GANTT_GOOGLE_CREDENTIALS_JSON` | vacío | JSON de la service account (una sola línea) |
 | `GANTT_SHEET_ID` | vacío | ID de la hoja plantilla Gantt; se copia al crear una por categoría |
 
+Estas variables se inyectan como **App Settings / variables de entorno**; Spring las aplica por relaxed binding (`GANTT_GOOGLE_ENABLED` → `gantt.google.enabled`, etc.). No van en `application.properties`.
+
 La plantilla debe estar **compartida** con el email de la service account (p. ej. `...@....iam.gserviceaccount.com`) con al menos permiso de lector.
 
 El scheduler sincroniza todos los días a las **12:00** (`America/Lima`).

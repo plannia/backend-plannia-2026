@@ -73,7 +73,8 @@ import static org.mockito.Mockito.when;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
         "JWT_SECRET=integration-test-secret-please-32-chars",
-        "notifications.email.transport=log"
+        "notifications.email.transport=log",
+        "gantt.google.enabled=false"
 })
 class EndToEndFlowIntegrationTest {
     private static final AtomicInteger SEQ = new AtomicInteger();
