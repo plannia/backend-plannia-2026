@@ -17,15 +17,19 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import upc.com.pe.backendplannia.assignment.domain.model.commands.AutoAssignProjectCommand;
+import upc.com.pe.backendplannia.assignment.domain.model.commands.AutoAssignTeamCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.commands.CompleteAssignmentCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetAssignmentsByUserIdQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentCommandService;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryService;
 import upc.com.pe.backendplannia.assignment.interfaces.rest.resources.AssignmentResource;
+import upc.com.pe.backendplannia.assignment.interfaces.rest.resources.AutoAssignResultResource;
 import upc.com.pe.backendplannia.assignment.interfaces.rest.resources.CandidateProfileResource;
 import upc.com.pe.backendplannia.assignment.interfaces.rest.resources.ConfirmRecommendationResource;
 import upc.com.pe.backendplannia.assignment.interfaces.rest.transform.AssignmentResourceFromEntityAssembler;
+import upc.com.pe.backendplannia.assignment.interfaces.rest.transform.AutoAssignResultResourceFromResultAssembler;
 import upc.com.pe.backendplannia.assignment.interfaces.rest.transform.CandidateProfileResourceFromReadModelAssembler;
 import upc.com.pe.backendplannia.assignment.interfaces.rest.transform.ConfirmRecommendationCommandFromResourceAssembler;
 import upc.com.pe.backendplannia.shared.interfaces.rest.resources.MessageResource;
@@ -74,6 +78,64 @@ public class AssignmentController {
             if (assignment.isEmpty()) return ResponseEntity.badRequest().build();
             var assignmentResource = AssignmentResourceFromEntityAssembler.toResourceFromEntity(assignment.get());
             return new ResponseEntity<>(assignmentResource, HttpStatus.CREATED);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(new MessageResource(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/auto/teams/{teamId}")
+    @Operation(summary = "Auto-assign all unassigned tasks of a team to the best available members")
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Auto-assignment completed",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = AutoAssignResultResource.class)
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Bad request",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = MessageResource.class)
+                    )
+            )
+    })
+    public ResponseEntity<?> autoAssignTeam(@PathVariable Long teamId) {
+        try {
+            var result = assignmentCommandService.handle(new AutoAssignTeamCommand(teamId));
+            return ResponseEntity.ok(AutoAssignResultResourceFromResultAssembler.toResourceFromResult(result));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(new MessageResource(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/auto/teams/{teamId}/categories/{categoryId}")
+    @Operation(summary = "Auto-assign all unassigned tasks of a category to the best available members")
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Auto-assignment completed",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = AutoAssignResultResource.class)
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Bad request",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = MessageResource.class)
+                    )
+            )
+    })
+    public ResponseEntity<?> autoAssignCategory(@PathVariable Long teamId, @PathVariable Long categoryId) {
+        try {
+            var result = assignmentCommandService.handle(new AutoAssignProjectCommand(teamId, categoryId));
+            return ResponseEntity.ok(AutoAssignResultResourceFromResultAssembler.toResourceFromResult(result));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(new MessageResource(e.getMessage()));
         }

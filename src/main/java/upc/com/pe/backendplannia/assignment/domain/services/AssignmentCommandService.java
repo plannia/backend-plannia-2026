@@ -7,6 +7,7 @@ import upc.com.pe.backendplannia.assignment.domain.model.commands.CompleteAssign
 import upc.com.pe.backendplannia.assignment.domain.model.commands.ConfirmRecommendationCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.commands.CreateAssignmentCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.commands.DeactivateUserAssignmentsCommand;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.AutoAssignmentResult;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,9 +15,9 @@ import java.util.Optional;
 public interface AssignmentCommandService {
     Optional<Assignment> handle(CreateAssignmentCommand command);
 
-    List<Assignment> handle(AutoAssignTeamCommand command);
+    AutoAssignmentResult handle(AutoAssignTeamCommand command);
 
-    List<Assignment> handle(AutoAssignProjectCommand command);
+    AutoAssignmentResult handle(AutoAssignProjectCommand command);
 
     Optional<Assignment> handle(ConfirmRecommendationCommand command);
 
