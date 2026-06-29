@@ -19,6 +19,7 @@ import upc.com.pe.backendplannia.assignment.domain.model.commands.CreateAssignme
 import upc.com.pe.backendplannia.assignment.domain.model.events.AssignmentCompletedEvent;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetAssignmentsByUserIdQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.BacklogTask;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.TaskRequirement;
 import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.AssignmentStatus;
@@ -29,9 +30,11 @@ import upc.com.pe.backendplannia.assignment.domain.services.MemberWorkloadPort;
 import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService;
 import upc.com.pe.backendplannia.assignment.domain.services.TaskAssignmentPort;
 import upc.com.pe.backendplannia.assignment.domain.services.TaskRequirementResolver;
+import upc.com.pe.backendplannia.assignment.domain.services.UnassignedTaskPort;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
 import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVector;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -86,6 +89,9 @@ class AssignmentApplicationServicesTests {
     @MockitoBean
     private TaskAssignmentPort taskAssignmentPort;
 
+    @MockitoBean
+    private UnassignedTaskPort unassignedTaskPort;
+
     @Test
     void handleCreateAssignmentCommandCreatesActiveAssignment() {
         var command = new CreateAssignmentCommand(SECOND_USER_ID, TASK_ID, 0.80f, 0.60f, 0.40f, 0.69f);
@@ -107,17 +113,92 @@ class AssignmentApplicationServicesTests {
     }
 
     @Test
-    void handleAutoAssignTeamCommandIsNotImplementedYet() {
-        assertThatThrownBy(() -> assignmentCommandService.handle(new AutoAssignTeamCommand(TEAM_ID)))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Auto assign team is not implemented yet");
+    void handleAutoAssignTeamCommandAssignsEachTaskToBestCandidateInPriorityOrder() {
+        var now = LocalDateTime.now();
+        // Backend y diseñador, ambos con 8h libres. Cada uno gana la tarea de su especialidad.
+        var backend = candidate(BEST_USER_ID, vector(1f, 0f, 0f), vector(1f, 0f, 0f), vector(1f, 0f, 0f), 0f, 8f);
+        var designer = candidate(THIRD_USER_ID, vector(0f, 1f, 0f), vector(0f, 1f, 0f), vector(0f, 1f, 0f), 0f, 8f);
+
+        var backendTask = new TaskRequirement(TASK_ID, vector(1f, 0f, 0f), 2, "HIGH", "MEDIUM");
+        var designTask = new TaskRequirement(502L, vector(0f, 1f, 0f), 2, "LOW", "EASY");
+
+        when(candidateProfileProvider.findByTeamId(TEAM_ID)).thenReturn(List.of(backend, designer));
+        // El backlog llega desordenado: HIGH (TASK_ID) debe procesarse antes que LOW (502).
+        when(unassignedTaskPort.findUnassignedByTeamId(TEAM_ID)).thenReturn(List.of(
+                new BacklogTask(502L, 1, 1, now.plusDays(5)),
+                new BacklogTask(TASK_ID, 3, 2, now.plusDays(1))
+        ));
+        when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(backendTask));
+        when(taskRequirementResolver.resolveByTaskId(502L)).thenReturn(Optional.of(designTask));
+        when(assignmentRepository.save(any(Assignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = assignmentCommandService.handle(new AutoAssignTeamCommand(TEAM_ID));
+
+        assertThat(result.skippedTaskIds()).isEmpty();
+        // Procesadas en orden de prioridad: backend (HIGH) primero, diseño (LOW) después.
+        assertThat(result.assignments())
+                .extracting(Assignment::getTaskId)
+                .containsExactly(TASK_ID, 502L);
+        assertThat(result.assignments())
+                .extracting(Assignment::getUserId)
+                .containsExactly(BEST_USER_ID, THIRD_USER_ID);
+        verify(taskAssignmentPort).markAsAssigned(TASK_ID);
+        verify(taskAssignmentPort).markAsAssigned(502L);
+        verify(memberWorkloadPort).reserveHours(BEST_USER_ID, backendTask.estimatedHours());
+        verify(memberWorkloadPort).reserveHours(THIRD_USER_ID, designTask.estimatedHours());
     }
 
     @Test
-    void handleAutoAssignProjectCommandIsNotImplementedYet() {
-        assertThatThrownBy(() -> assignmentCommandService.handle(new AutoAssignProjectCommand(TEAM_ID, 401L)))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Auto assign project is not implemented yet");
+    void handleAutoAssignTeamCommandRespectsCumulativeCapacityAndSkipsTasksWithoutCandidate() {
+        var now = LocalDateTime.now();
+        // Único candidato con 5h libres. Dos tareas de 3h: solo entra la primera; la segunda se salta.
+        var backend = candidate(BEST_USER_ID, vector(1f, 0f, 0f), vector(1f, 0f, 0f), vector(1f, 0f, 0f), 0f, 5f);
+
+        var firstTask = new TaskRequirement(TASK_ID, vector(1f, 0f, 0f), 3, "HIGH", "HARD");
+        var secondTask = new TaskRequirement(502L, vector(1f, 0f, 0f), 3, "HIGH", "HARD");
+
+        when(candidateProfileProvider.findByTeamId(TEAM_ID)).thenReturn(List.of(backend));
+        // Misma prioridad/dificultad: desempata limitDate. TASK_ID vence antes → se procesa primero.
+        when(unassignedTaskPort.findUnassignedByTeamId(TEAM_ID)).thenReturn(List.of(
+                new BacklogTask(502L, 3, 3, now.plusDays(5)),
+                new BacklogTask(TASK_ID, 3, 3, now.plusDays(1))
+        ));
+        when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(firstTask));
+        when(taskRequirementResolver.resolveByTaskId(502L)).thenReturn(Optional.of(secondTask));
+        when(assignmentRepository.save(any(Assignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = assignmentCommandService.handle(new AutoAssignTeamCommand(TEAM_ID));
+
+        // La primera tarea se asigna; la segunda queda sin candidato disponible (3h > 2h restantes).
+        assertThat(result.assignments())
+                .extracting(Assignment::getTaskId)
+                .containsExactly(TASK_ID);
+        assertThat(result.skippedTaskIds()).containsExactly(502L);
+        verify(memberWorkloadPort).reserveHours(BEST_USER_ID, firstTask.estimatedHours());
+        verify(taskAssignmentPort).markAsAssigned(TASK_ID);
+        verify(taskAssignmentPort, never()).markAsAssigned(502L);
+    }
+
+    @Test
+    void handleAutoAssignProjectCommandUsesCategoryBacklog() {
+        var backend = candidate(BEST_USER_ID, vector(1f, 0f, 0f), vector(1f, 0f, 0f), vector(1f, 0f, 0f), 0f, 8f);
+        var task = new TaskRequirement(TASK_ID, vector(1f, 0f, 0f), 2, "MEDIUM", "MEDIUM");
+
+        when(candidateProfileProvider.findByTeamId(TEAM_ID)).thenReturn(List.of(backend));
+        when(unassignedTaskPort.findUnassignedByCategoryId(401L)).thenReturn(List.of(
+                new BacklogTask(TASK_ID, 2, 2, LocalDateTime.now().plusDays(2))
+        ));
+        when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(task));
+        when(assignmentRepository.save(any(Assignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = assignmentCommandService.handle(new AutoAssignProjectCommand(TEAM_ID, 401L));
+
+        assertThat(result.skippedTaskIds()).isEmpty();
+        assertThat(result.assignments())
+                .extracting(Assignment::getUserId)
+                .containsExactly(BEST_USER_ID);
+        // Scope de proyecto: backlog por categoría, NO por equipo.
+        verify(unassignedTaskPort).findUnassignedByCategoryId(401L);
     }
 
     @Test
