@@ -120,6 +120,12 @@ public class CategoryCommandServiceImpl implements CategoryCommandService {
         }
 
         category.update(command);
-        return Optional.of(categoryRepository.save(category));
+        var savedCategory = categoryRepository.save(category);
+        // Inicializa 'members' en la instancia RETORNADA, dentro de la sesión: el assembler de la
+        // respuesta la lee (memberIds) y, a diferencia de add/remove member, update() nunca toca la
+        // colección, por lo que quedaría como proxy lazy y reventaría al serializar fuera de la
+        // transacción (LazyInitializationException).
+        savedCategory.getMembers().size();
+        return Optional.of(savedCategory);
     }
 }
