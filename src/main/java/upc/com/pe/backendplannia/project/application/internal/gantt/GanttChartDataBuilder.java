@@ -51,12 +51,13 @@ public class GanttChartDataBuilder {
         var legends = new ArrayList<GanttMemberLegend>();
         for (int index = 0; index < members.size(); index++) {
             var memberId = members.get(index).id();
+            var colorIndex = index % (MAX_COLOR_INDEX + 1);
             teamMemberPort.findByUserId(memberId).ifPresent(member ->
                     legends.add(new GanttMemberLegend(
                             member.userId(),
                             member.name(),
                             member.email(),
-                            index % (MAX_COLOR_INDEX + 1)
+                            colorIndex
                     ))
             );
         }

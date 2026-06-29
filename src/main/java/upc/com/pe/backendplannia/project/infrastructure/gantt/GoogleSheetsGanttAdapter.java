@@ -9,6 +9,7 @@ import com.google.api.services.drive.model.Permission;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
+import com.google.api.services.sheets.v4.model.ClearValuesRequest;
 import com.google.api.services.sheets.v4.model.CellData;
 import com.google.api.services.sheets.v4.model.Color;
 import com.google.api.services.sheets.v4.model.DimensionProperties;
@@ -146,7 +147,7 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
             var endColumn = columnLetter(totalColumns);
 
             sheetsService.spreadsheets().values()
-                    .clear(spreadsheetId, quoteSheetRange(sheetName, "A1:" + endColumn + totalRows), new ValueRange())
+                    .clear(spreadsheetId, quoteSheetRange(sheetName, "A1:" + endColumn + totalRows), new ClearValuesRequest())
                     .execute();
 
             var body = new ValueRange().setValues(toObjectValues(values));
