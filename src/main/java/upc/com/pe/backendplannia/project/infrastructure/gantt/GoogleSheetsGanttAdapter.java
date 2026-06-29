@@ -22,6 +22,8 @@ import com.google.api.services.sheets.v4.model.UpdateDimensionPropertiesRequest;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import com.google.auth.http.HttpCredentialsAdapter;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import upc.com.pe.backendplannia.project.application.internal.gantt.GanttChartIntegrationException;
@@ -32,7 +34,6 @@ import upc.com.pe.backendplannia.project.domain.model.readmodels.GanttTaskRow;
 import upc.com.pe.backendplannia.project.domain.services.GanttChartPort;
 
 import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -43,6 +44,7 @@ import java.util.Map;
 @Service
 @ConditionalOnProperty(name = "gantt.google.enabled", havingValue = "true")
 public class GoogleSheetsGanttAdapter implements GanttChartPort {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GoogleSheetsGanttAdapter.class);
     private static final String APPLICATION_NAME = "Plannia";
     private static final int FIXED_COLUMNS = 5;
     private static final DateTimeFormatter DATE_HEADER_FORMAT = DateTimeFormatter.ofPattern("MMM d", Locale.US);
@@ -52,6 +54,8 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     private final GoogleGanttCredentialsProvider credentialsProvider;
     private Sheets sheetsService;
     private Drive driveService;
+    // null = inicializó OK; no-null = motivo por el que Gantt-Google quedó inactivo.
+    private String initError;
 
     public GoogleSheetsGanttAdapter(GanttGoogleProperties properties, GoogleGanttCredentialsProvider credentialsProvider) {
         this.properties = properties;
@@ -60,13 +64,16 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
 
     @PostConstruct
     void init() {
-        if (!properties.hasOutputFolder()) {
-            throw new GanttChartIntegrationException(
-                    "gantt.google.output-folder-id (GANTT_OUTPUT_FOLDER_ID) is required. "
-                            + "Use a folder in your Google Drive (OAuth/Gmail) or inside a Shared Drive (service account).");
-        }
-
+        // Fail-soft: una integración OPCIONAL (export Gantt) mal configurada NO debe tumbar el arranque
+        // de TODO el backend. Si la config de Google falla, lo registramos y dejamos el adapter inactivo;
+        // los endpoints de Gantt responderán 502 al usarse (ver ensureReady), pero la app levanta normal.
         try {
+            if (!properties.hasOutputFolder()) {
+                throw new GanttChartIntegrationException(
+                        "gantt.google.output-folder-id (GANTT_OUTPUT_FOLDER_ID) is required. "
+                                + "Use a folder in your Google Drive (OAuth/Gmail) or inside a Shared Drive (service account).");
+            }
+
             var credentials = credentialsProvider.build();
             var requestInitializer = new HttpCredentialsAdapter(credentials);
             var transport = GoogleNetHttpTransport.newTrustedTransport();
@@ -79,15 +86,29 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
                     .setApplicationName(APPLICATION_NAME)
                     .build();
             validateOutputFolder();
-        } catch (GanttChartIntegrationException exception) {
-            throw exception;
-        } catch (IOException | GeneralSecurityException exception) {
-            throw new GanttChartIntegrationException("Failed to initialize Google Sheets client", exception);
+            initError = null;
+            LOGGER.info("Gantt Google Sheets inicializado correctamente.");
+        } catch (Exception exception) {
+            initError = exception.getMessage();
+            sheetsService = null;
+            driveService = null;
+            LOGGER.error("Gantt Google deshabilitado por configuración inválida: {}. El backend arranca igual; "
+                    + "los endpoints de Gantt devolverán 502 hasta corregir la config.", initError, exception);
+        }
+    }
+
+    // Lanza un error claro (lo traduce el controller a 502) si la integración no quedó inicializada.
+    private void ensureReady() {
+        if (sheetsService == null || driveService == null) {
+            throw new GanttChartIntegrationException(
+                    "La integración Gantt con Google no está disponible: "
+                            + (initError != null ? initError : "no inicializada"));
         }
     }
 
     @Override
     public GanttSpreadsheetResult createSpreadsheet(String title) {
+        ensureReady();
         try {
             // Always create in the Shared Drive folder; syncContent fills the Gantt data programmatically.
             if (properties.hasOutputFolder()) {
@@ -192,6 +213,7 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
 
     @Override
     public void shareWithEmails(String spreadsheetId, List<String> emails) {
+        ensureReady();
         for (var email : emails) {
             try {
                 var permission = new Permission()
@@ -217,6 +239,7 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
 
     @Override
     public void syncContent(String spreadsheetId, GanttChartSnapshot snapshot) {
+        ensureReady();
         try {
             var sheetName = resolvePrimarySheetName(spreadsheetId);
             var values = buildSheetValues(snapshot);
