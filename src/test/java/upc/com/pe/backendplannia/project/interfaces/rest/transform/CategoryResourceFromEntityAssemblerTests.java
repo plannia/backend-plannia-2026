@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import upc.com.pe.backendplannia.project.domain.model.aggregates.Category;
 import upc.com.pe.backendplannia.project.domain.model.commands.CreateCategoryCommand;
 
+import upc.com.pe.backendplannia.shared.test.AuditableEntityTestSupport;
+
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,7 +14,7 @@ class CategoryResourceFromEntityAssemblerTests {
     @Test
     void mapsGanttSpreadsheetUrl() {
         var category = new Category(new CreateCategoryCommand(1L, "Planning", LocalDateTime.now()));
-        category.setId(10L);
+        AuditableEntityTestSupport.assignId(category, 10L);
         category.attachGanttChart("sheet-id", "https://docs.google.com/spreadsheets/d/sheet-id/edit");
 
         var resource = CategoryResourceFromEntityAssembler.toResourceFromEntity(category);

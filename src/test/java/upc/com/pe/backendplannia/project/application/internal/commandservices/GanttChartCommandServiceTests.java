@@ -13,6 +13,8 @@ import upc.com.pe.backendplannia.project.domain.services.TeamMemberPort;
 import upc.com.pe.backendplannia.project.infrastructure.persistence.jpa.repositories.CategoryRepository;
 import upc.com.pe.backendplannia.project.infrastructure.persistence.jpa.repositories.TaskRepository;
 
+import upc.com.pe.backendplannia.shared.test.AuditableEntityTestSupport;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -85,7 +87,7 @@ class GanttChartCommandServiceTests {
 
     private Category categoryWithMember() {
         var category = new Category(new CreateCategoryCommand(1L, "Planning", LocalDateTime.now()));
-        category.setId(CATEGORY_ID);
+        AuditableEntityTestSupport.assignId(category, CATEGORY_ID);
         category.addMember(new UserId(7L));
         return category;
     }

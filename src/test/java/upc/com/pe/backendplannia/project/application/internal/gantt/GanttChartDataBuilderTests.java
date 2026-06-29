@@ -11,6 +11,8 @@ import upc.com.pe.backendplannia.project.domain.model.valueobjects.UserId;
 import upc.com.pe.backendplannia.project.domain.services.AssignmentActivityPort;
 import upc.com.pe.backendplannia.project.domain.services.TeamMemberPort;
 
+import upc.com.pe.backendplannia.shared.test.AuditableEntityTestSupport;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -69,7 +71,7 @@ class GanttChartDataBuilderTests {
 
     private Category categoryWithMembers() {
         var category = new Category(new CreateCategoryCommand(1L, "Planning", LocalDateTime.of(2026, 7, 31, 18, 0)));
-        category.setId(99L);
+        AuditableEntityTestSupport.assignId(category, 99L);
         category.addMember(new UserId(MEMBER_ONE_ID));
         category.addMember(new UserId(MEMBER_TWO_ID));
         return category;
@@ -94,7 +96,7 @@ class GanttChartDataBuilderTests {
                 List.of(),
                 List.of()
         ), category);
-        task.setId((long) title.hashCode());
+        AuditableEntityTestSupport.assignId(task, (long) title.hashCode());
         task.setStatus(status);
         task.setStartTime(startTime);
         task.setEndTime(endTime);
