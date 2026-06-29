@@ -84,11 +84,14 @@ public class AuthenticationController {
                     )
             )
     })
-    public ResponseEntity<AuthenticatedUserResource> signIn(@RequestBody SignInResource resource) {
+    public ResponseEntity<?> signIn(@RequestBody SignInResource resource) {
         var command = SignInCommandFromResourceAssembler.toCommandFromResource(resource);
         var authenticatedUser = userCommandService.handle(command);
         if (authenticatedUser.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            // Cuerpo JSON (no vacío) para que el cliente pueda leer el mensaje; un 401 sin body
+            // hace que el front reviente al parsear (response.json() sobre vacío).
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new MessageResource("Credenciales inválidas"));
         }
         var authenticatedUserResource = AuthenticatedUserResourceFromEntityAssembler.toResourceFromEntityAndToken(
                 authenticatedUser.get().getLeft(),
