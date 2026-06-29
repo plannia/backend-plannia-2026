@@ -3,11 +3,9 @@ package upc.com.pe.backendplannia.project.infrastructure.gantt;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
-import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.Permission;
 import com.google.api.services.sheets.v4.Sheets;
-import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.ClearValuesRequest;
 import com.google.api.services.sheets.v4.model.CellData;
@@ -23,7 +21,6 @@ import com.google.api.services.sheets.v4.model.UpdateCellsRequest;
 import com.google.api.services.sheets.v4.model.UpdateDimensionPropertiesRequest;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import com.google.auth.http.HttpCredentialsAdapter;
-import com.google.auth.oauth2.GoogleCredentials;
 import jakarta.annotation.PostConstruct;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -34,9 +31,7 @@ import upc.com.pe.backendplannia.project.domain.model.readmodels.GanttSpreadshee
 import upc.com.pe.backendplannia.project.domain.model.readmodels.GanttTaskRow;
 import upc.com.pe.backendplannia.project.domain.services.GanttChartPort;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -54,34 +49,25 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     private static final DateTimeFormatter TASK_DATE_FORMAT = DateTimeFormatter.ofPattern("M/d/yy");
 
     private final GanttGoogleProperties properties;
+    private final GoogleGanttCredentialsProvider credentialsProvider;
     private Sheets sheetsService;
     private Drive driveService;
 
-    public GoogleSheetsGanttAdapter(GanttGoogleProperties properties) {
+    public GoogleSheetsGanttAdapter(GanttGoogleProperties properties, GoogleGanttCredentialsProvider credentialsProvider) {
         this.properties = properties;
+        this.credentialsProvider = credentialsProvider;
     }
 
     @PostConstruct
     void init() {
-        if (properties.getCredentialsJson() == null || properties.getCredentialsJson().isBlank()) {
-            throw new GanttChartIntegrationException("gantt.google.credentials-json is required when gantt.google.enabled=true");
-        }
         if (!properties.hasOutputFolder()) {
             throw new GanttChartIntegrationException(
                     "gantt.google.output-folder-id (GANTT_OUTPUT_FOLDER_ID) is required. "
-                            + "Service accounts cannot use My Drive storage; set a folder ID inside a Shared Drive "
-                            + "where the service account is Content manager.");
+                            + "Use a folder in your Google Drive (OAuth/Gmail) or inside a Shared Drive (service account).");
         }
 
         try {
-            var credentials = GoogleCredentials.fromStream(
-                            new ByteArrayInputStream(properties.getCredentialsJson().getBytes(StandardCharsets.UTF_8)))
-                    .createScoped(List.of(
-                            SheetsScopes.SPREADSHEETS,
-                            DriveScopes.DRIVE,
-                            DriveScopes.DRIVE_FILE
-                    ));
-
+            var credentials = credentialsProvider.build();
             var requestInitializer = new HttpCredentialsAdapter(credentials);
             var transport = GoogleNetHttpTransport.newTrustedTransport();
             var jsonFactory = GsonFactory.getDefaultInstance();
@@ -130,15 +116,23 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
                         "GANTT_OUTPUT_FOLDER_ID points to a trashed folder: " + properties.getOutputFolderId());
             }
             if (folder.getDriveId() == null || folder.getDriveId().isBlank()) {
-                throw new GanttChartIntegrationException(
-                        "GANTT_OUTPUT_FOLDER_ID must be a folder inside a Google Shared Drive (Unidad compartida), "
-                                + "not My Drive. Folder '" + folder.getName() + "' is not on a Shared Drive.");
+                if (properties.usesServiceAccount()) {
+                    throw new GanttChartIntegrationException(
+                            "GANTT_OUTPUT_FOLDER_ID must be a folder inside a Google Shared Drive (Unidad compartida), "
+                                    + "not My Drive. Folder '" + folder.getName() + "' is not on a Shared Drive. "
+                                    + "For personal Gmail, configure GANTT_OAUTH_REFRESH_TOKEN instead of the service account.");
+                }
             }
+        } catch (GanttChartIntegrationException exception) {
+            throw exception;
         } catch (IOException exception) {
+            var hint = properties.usesOAuthUser()
+                    ? "Ensure you authorized the same Gmail account that owns the folder."
+                    : "Ensure the service account is Content manager on the Shared Drive.";
             throw new GanttChartIntegrationException(
                     "Cannot access Gantt output folder " + properties.getOutputFolderId() + ": "
                             + GoogleApiIOExceptionHelper.describe(exception)
-                            + ". Ensure the service account is Content manager on the Shared Drive.",
+                            + ". " + hint,
                     exception
             );
         }
@@ -187,8 +181,11 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     private String describeCreateFailure(IOException exception) {
         var detail = GoogleApiIOExceptionHelper.describe(exception);
         if (detail.contains("storageQuotaExceeded") || detail.toLowerCase(Locale.ROOT).contains("storage quota")) {
-            return detail + ". Service accounts cannot use personal Drive storage; set GANTT_OUTPUT_FOLDER_ID to a folder "
-                    + "inside a Shared Drive where the service account is Content manager (or move the template there).";
+            if (properties.usesServiceAccount()) {
+                return detail + ". Service accounts cannot use personal Drive storage; set GANTT_OUTPUT_FOLDER_ID to a folder "
+                        + "inside a Shared Drive, or switch to OAuth user mode (GANTT_OAUTH_*) for personal Gmail.";
+            }
+            return detail + ". Check that the authorized Gmail account has enough Drive storage.";
         }
         return detail;
     }

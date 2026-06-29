@@ -347,15 +347,49 @@ Integración opcional para generar un diagrama Gantt por categoría en Google Sh
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `GANTT_GOOGLE_ENABLED` | `false` | `true` usa Google API real; `false` usa adapter de log |
-| `GANTT_GOOGLE_CREDENTIALS_JSON` | vacío | JSON de la service account (una sola línea) |
-| `GANTT_SHEET_ID` | vacío | ID de la hoja plantilla Gantt; se copia al crear una por categoría |
-| `GANTT_OUTPUT_FOLDER_ID` | vacío | ID de carpeta dentro de una **Unidad compartida** (Shared Drive) donde se crean las copias Gantt |
+| `GANTT_GOOGLE_CREDENTIALS_JSON` | vacío | JSON de service account (Workspace + Shared Drive) |
+| `GANTT_OAUTH_CLIENT_ID` | vacío | OAuth Client ID (Gmail personal) |
+| `GANTT_OAUTH_CLIENT_SECRET` | vacío | OAuth Client Secret (Gmail personal) |
+| `GANTT_OAUTH_REFRESH_TOKEN` | vacío | Refresh token del Gmail que posee la carpeta Gantt |
+| `GANTT_SHEET_ID` | vacío | ID de plantilla opcional (ya no es necesaria para crear) |
+| `GANTT_OUTPUT_FOLDER_ID` | vacío | ID de carpeta en Drive donde se crean las hojas Gantt |
 
 Estas variables se inyectan como **App Settings / variables de entorno**; Spring las aplica por relaxed binding (`GANTT_GOOGLE_ENABLED` → `gantt.google.enabled`, etc.). No van en `application.properties`.
 
-La plantilla debe estar **compartida** con el email de la service account (p. ej. `...@....iam.gserviceaccount.com`) con al menos permiso de lector.
+### Modo A — Gmail personal (`@gmail.com`)
 
-**Cuota de Drive:** las service accounts no tienen almacenamiento en "Mi unidad". Si aparece `storageQuotaExceeded`, crea una Unidad compartida (requiere Google Workspace), añade la service account como **Colaborador de contenido**, crea una carpeta dentro y configura `GANTT_OUTPUT_FOLDER_ID` con el ID de esa carpeta (visible en la URL de la carpeta en Drive).
+Las service accounts **no** pueden guardar en Mi unidad. Usa **OAuth de usuario**:
+
+1. En [Google Cloud Console](https://console.cloud.google.com/) (proyecto `plannia-500804`): APIs habilitadas (Sheets + Drive).
+2. **Credenciales → Crear credenciales → ID de cliente OAuth → Aplicación de escritorio**.
+3. En **Pantalla de consentimiento OAuth**, añade tu Gmail como usuario de prueba.
+4. Ejecuta una sola vez (en tu PC):
+
+```bash
+mvn -q exec:java -Dexec.mainClass=upc.com.pe.backendplannia.project.infrastructure.gantt.GanttOAuthTokenSetup -Dexec.args="TU_CLIENT_ID TU_CLIENT_SECRET"
+```
+
+5. Inicia sesión con el **mismo Gmail** que tiene la carpeta `plannia` en Mi unidad.
+6. Copia el `refresh_token` impreso y configura en Azure:
+
+| Variable | Valor |
+|----------|-------|
+| `GANTT_GOOGLE_ENABLED` | `true` |
+| `GANTT_OAUTH_CLIENT_ID` | tu Client ID |
+| `GANTT_OAUTH_CLIENT_SECRET` | tu Client Secret |
+| `GANTT_OAUTH_REFRESH_TOKEN` | el refresh token generado |
+| `GANTT_OUTPUT_FOLDER_ID` | `1Swj_mLlnbaDBoAZCOJN8-X1W_88qYbvC` (carpeta en Mi unidad) |
+
+Puedes **eliminar** `GANTT_GOOGLE_CREDENTIALS_JSON` en este modo. Reinicia el backend en Azure.
+
+### Modo B — Google Workspace (Shared Drive)
+
+| `GANTT_GOOGLE_CREDENTIALS_JSON` | JSON de service account |
+| `GANTT_OUTPUT_FOLDER_ID` | carpeta dentro de una **Unidad compartida** |
+
+Añade la service account como **Colaborador de contenido** en la unidad compartida.
+
+**Cuota de Drive (solo modo B):** si aparece `storageQuotaExceeded`, la carpeta no está en Shared Drive o la service account no tiene permisos.
 
 El scheduler sincroniza todos los días a las **12:00** (`America/Lima`).
 
