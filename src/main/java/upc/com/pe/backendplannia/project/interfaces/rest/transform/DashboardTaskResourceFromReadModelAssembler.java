@@ -12,6 +12,7 @@ public class DashboardTaskResourceFromReadModelAssembler {
                 item.taskName(),
                 item.taskStatus(),
                 item.taskStartTime(),
+                item.taskEndTime(),
                 item.taskHours(),
                 item.taskCategoryId(),
                 item.taskCategoryName()

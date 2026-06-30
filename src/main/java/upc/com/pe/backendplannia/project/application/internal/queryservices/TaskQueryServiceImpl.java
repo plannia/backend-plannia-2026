@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import upc.com.pe.backendplannia.project.domain.model.aggregates.Task;
 import upc.com.pe.backendplannia.project.domain.model.queries.GetTasksByFilterQuery;
 import upc.com.pe.backendplannia.project.domain.model.queries.GetTasksForDashboardQuery;
+import upc.com.pe.backendplannia.project.domain.model.queries.GetTasksForPlannerQuery;
 import upc.com.pe.backendplannia.project.domain.model.queries.GetTaskStatusCountsByLatestAssignmentUserIdQuery;
 import upc.com.pe.backendplannia.project.domain.model.readmodels.DashboardTaskItem;
 import upc.com.pe.backendplannia.project.domain.model.readmodels.TaskStatusCounts;
@@ -21,6 +22,7 @@ import upc.com.pe.backendplannia.project.infrastructure.persistence.jpa.specific
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Service
 public class TaskQueryServiceImpl implements TaskQueryService {
@@ -100,6 +102,31 @@ public class TaskQueryServiceImpl implements TaskQueryService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<DashboardTaskItem> handle(GetTasksForPlannerQuery query) {
+        if (!teamExistencePort.existsById(query.teamId())) {
+            throw new IllegalArgumentException("Team not found");
+        }
+
+        var baseSpec = TaskSpecifications.byTeamId(query.teamId())
+                .and(TaskSpecifications.isAssigned(true));
+
+        var inProgressTasks = taskRepository.findAll(
+                baseSpec.and(TaskSpecifications.hasStatus(Status.IN_PROGRESS))
+        );
+        var doneTasks = taskRepository.findAll(
+                baseSpec.and(TaskSpecifications.hasStatus(Status.DONE))
+        ).stream()
+                .filter(task -> task.getStartTime() != null && task.getEndTime() != null)
+                .toList();
+
+        return Stream.concat(inProgressTasks.stream(), doneTasks.stream())
+                .map(this::toDashboardTaskItem)
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public TaskStatusCounts handle(GetTaskStatusCountsByLatestAssignmentUserIdQuery query) {
         var taskIds = assignmentActivityPort.findTaskIdsByLatestAssignmentUserId(query.userId());
         if (taskIds.isEmpty()) {
@@ -124,6 +151,7 @@ public class TaskQueryServiceImpl implements TaskQueryService {
                                 task.getTitle(),
                                 task.getStatus(),
                                 task.getStartTime(),
+                                task.getEndTime(),
                                 task.getHours(),
                                 task.getCategory().getId(),
                                 task.getCategory().getName()

@@ -5,8 +5,6 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeRequestUrl;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
-import com.google.api.services.drive.DriveScopes;
-import com.google.api.services.sheets.v4.SheetsScopes;
 
 import java.util.List;
 
@@ -17,12 +15,6 @@ import java.util.List;
  * {@code mvn -q exec:java -Dexec.mainClass=upc.com.pe.backendplannia.project.infrastructure.gantt.GanttOAuthTokenSetup -Dexec.args="CLIENT_ID CLIENT_SECRET"}
  */
 public final class GanttOAuthTokenSetup {
-    private static final List<String> SCOPES = List.of(
-            SheetsScopes.SPREADSHEETS,
-            DriveScopes.DRIVE,
-            DriveScopes.DRIVE_FILE
-    );
-
     private GanttOAuthTokenSetup() {
     }
 
@@ -37,14 +29,14 @@ public final class GanttOAuthTokenSetup {
 
         var transport = GoogleNetHttpTransport.newTrustedTransport();
         var jsonFactory = GsonFactory.getDefaultInstance();
-        var flow = new GoogleAuthorizationCodeFlow.Builder(transport, jsonFactory, clientId, clientSecret, SCOPES)
+        var flow = new GoogleAuthorizationCodeFlow.Builder(transport, jsonFactory, clientId, clientSecret, GanttOAuthScopes.ALL)
                 .setAccessType("offline")
                 .setApprovalPrompt("force")
                 .build();
 
         var receiver = new LocalServerReceiver.Builder().setPort(8888).build();
         var redirectUri = receiver.getRedirectUri();
-        var authorizationUrl = new GoogleAuthorizationCodeRequestUrl(clientId, redirectUri, SCOPES)
+        var authorizationUrl = new GoogleAuthorizationCodeRequestUrl(clientId, redirectUri, GanttOAuthScopes.ALL)
                 .setAccessType("offline")
                 .setApprovalPrompt("force")
                 .build();

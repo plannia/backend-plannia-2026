@@ -358,29 +358,51 @@ Estas variables se inyectan como **App Settings / variables de entorno**; Spring
 
 ### Modo A — Gmail personal (`@gmail.com`)
 
-Las service accounts **no** pueden guardar en Mi unidad. Usa **OAuth de usuario**:
+Las service accounts **no** pueden guardar en Mi unidad. Usa **OAuth de usuario** (una sola vez) y el backend desplegado guarda el refresh token en Azure.
 
-1. En [Google Cloud Console](https://console.cloud.google.com/) (proyecto `plannia-500804`): APIs habilitadas (Sheets + Drive).
-2. **Credenciales → Crear credenciales → ID de cliente OAuth → Aplicación de escritorio**.
-3. En **Pantalla de consentimiento OAuth**, añade tu Gmail como usuario de prueba.
-4. Ejecuta una sola vez (en tu PC):
+#### A.1 Crear cliente OAuth **Web** en Google Cloud
 
-```bash
-mvn -q exec:java -Dexec.mainClass=upc.com.pe.backendplannia.project.infrastructure.gantt.GanttOAuthTokenSetup -Dexec.args="TU_CLIENT_ID TU_CLIENT_SECRET"
+1. **Credenciales → Crear cliente OAuth → Aplicación web**
+2. **URI de redirección autorizados** (exacto):
+
+```
+https://plannia-eabkf7dna7g7dqhc.eastus-01.azurewebsites.net/api/v1/gantt/oauth/callback
 ```
 
-5. Inicia sesión con el **mismo Gmail** que tiene la carpeta `plannia` en Mi unidad.
-6. Copia el `refresh_token` impreso y configura en Azure:
+3. Añade tu Gmail en **Usuarios de prueba** (pantalla de consentimiento).
+
+#### A.2 Variables en Azure (antes del refresh token)
 
 | Variable | Valor |
 |----------|-------|
-| `GANTT_GOOGLE_ENABLED` | `true` |
-| `GANTT_OAUTH_CLIENT_ID` | tu Client ID |
-| `GANTT_OAUTH_CLIENT_SECRET` | tu Client Secret |
-| `GANTT_OAUTH_REFRESH_TOKEN` | el refresh token generado |
-| `GANTT_OUTPUT_FOLDER_ID` | `1Swj_mLlnbaDBoAZCOJN8-X1W_88qYbvC` (carpeta en Mi unidad) |
+| `GANTT_OAUTH_CLIENT_ID` | Client ID (app web) |
+| `GANTT_OAUTH_CLIENT_SECRET` | Client Secret |
+| `GANTT_OAUTH_REDIRECT_URI` | misma URL de callback de arriba |
+| `GANTT_OAUTH_SETUP_SECRET` | una contraseña larga aleatoria (ej. `plannia-setup-2026-xK9m`) |
+| `GANTT_OUTPUT_FOLDER_ID` | `1Swj_mLlnbaDBoAZCOJN8-X1W_88qYbvC` |
 
-Puedes **eliminar** `GANTT_GOOGLE_CREDENTIALS_JSON` en este modo. Reinicia el backend en Azure.
+Redespliega el backend.
+
+#### A.3 Autorizar desde el navegador (una vez)
+
+Abre en el navegador (sustituye `TU_SECRETO`):
+
+```
+https://plannia-eabkf7dna7g7dqhc.eastus-01.azurewebsites.net/api/v1/gantt/oauth/authorize?secret=TU_SECRETO
+```
+
+Inicia sesión con tu Gmail → al terminar verás el **refresh token** en pantalla.
+
+#### A.4 Completar Azure
+
+| `GANTT_OAUTH_REFRESH_TOKEN` | el token mostrado |
+| `GANTT_GOOGLE_ENABLED` | `true` |
+
+Reinicia Azure. **Generar Gantt** en `https://plannia-phi.vercel.app` ya usará tu Drive.
+
+Alternativa local: `GanttOAuthTokenSetup` con cliente **de escritorio** (sin desplegar).
+
+Puedes **eliminar** `GANTT_GOOGLE_CREDENTIALS_JSON` en este modo.
 
 ### Modo B — Google Workspace (Shared Drive)
 

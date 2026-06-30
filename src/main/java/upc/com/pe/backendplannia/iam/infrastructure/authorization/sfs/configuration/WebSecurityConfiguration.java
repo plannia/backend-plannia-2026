@@ -135,7 +135,8 @@ public class WebSecurityConfiguration {
                                 "/swagger-ui/**",
                                 "/webjars/**",
                                 "/api/v1/companies/**",
-                                "/api/v1/roles/**"
+                                "/api/v1/roles/**",
+                                "/api/v1/gantt/oauth/**"
                         ).permitAll()
                         .requestMatchers("/api/v1/users/**").authenticated()
                         .anyRequest().authenticated());

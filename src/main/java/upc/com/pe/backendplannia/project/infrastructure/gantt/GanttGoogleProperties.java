@@ -13,6 +13,10 @@ public class GanttGoogleProperties {
     private String oauthClientId = "";
     private String oauthClientSecret = "";
     private String oauthRefreshToken = "";
+    /** Callback URL registered in Google Cloud (Web OAuth client), e.g. https://your-api.azurewebsites.net/api/v1/gantt/oauth/callback */
+    private String oauthRedirectUri = "";
+    /** Secret required to open /api/v1/gantt/oauth/authorize (one-time setup). */
+    private String oauthSetupSecret = "";
 
     public boolean isEnabled() {
         return enabled;
@@ -70,6 +74,22 @@ public class GanttGoogleProperties {
         this.oauthRefreshToken = oauthRefreshToken;
     }
 
+    public String getOauthRedirectUri() {
+        return oauthRedirectUri;
+    }
+
+    public void setOauthRedirectUri(String oauthRedirectUri) {
+        this.oauthRedirectUri = oauthRedirectUri;
+    }
+
+    public String getOauthSetupSecret() {
+        return oauthSetupSecret;
+    }
+
+    public void setOauthSetupSecret(String oauthSetupSecret) {
+        this.oauthSetupSecret = oauthSetupSecret;
+    }
+
     public boolean hasTemplateSheet() {
         return templateSheetId != null && !templateSheetId.isBlank();
     }
@@ -84,6 +104,19 @@ public class GanttGoogleProperties {
 
     public boolean usesOAuthUser() {
         return oauthRefreshToken != null && !oauthRefreshToken.isBlank();
+    }
+
+    public boolean hasOAuthClientCredentials() {
+        return oauthClientId != null && !oauthClientId.isBlank()
+                && oauthClientSecret != null && !oauthClientSecret.isBlank();
+    }
+
+    public boolean hasOauthRedirectUri() {
+        return oauthRedirectUri != null && !oauthRedirectUri.isBlank();
+    }
+
+    public boolean hasOauthSetupSecret() {
+        return oauthSetupSecret != null && !oauthSetupSecret.isBlank();
     }
 
     public boolean usesServiceAccount() {

@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import upc.com.pe.backendplannia.project.domain.model.queries.GetTasksByFilterQuery;
 import upc.com.pe.backendplannia.project.domain.model.queries.GetTasksForDashboardQuery;
+import upc.com.pe.backendplannia.project.domain.model.queries.GetTasksForPlannerQuery;
 import upc.com.pe.backendplannia.project.domain.services.TaskCommandService;
 import upc.com.pe.backendplannia.project.domain.services.TaskQueryService;
 import upc.com.pe.backendplannia.project.interfaces.rest.resources.CreateTaskResource;
@@ -116,6 +117,34 @@ public class TaskController {
     })
     public ResponseEntity<List<DashboardTaskResource>> getTasksForDashboard(@PathVariable Long teamId) {
         var items = taskQueryService.handle(new GetTasksForDashboardQuery(teamId));
+        var resources = items.stream()
+                .map(DashboardTaskResourceFromReadModelAssembler::toResourceFromReadModel)
+                .toList();
+        return ResponseEntity.ok(resources);
+    }
+
+    @GetMapping("/planner/teams/{teamId}")
+    @Operation(summary = "Get in-progress and completed tasks for team planner")
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Planner tasks found",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            array = @ArraySchema(schema = @Schema(implementation = DashboardTaskResource.class))
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Bad request",
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = MessageResource.class)
+                    )
+            )
+    })
+    public ResponseEntity<List<DashboardTaskResource>> getTasksForPlanner(@PathVariable Long teamId) {
+        var items = taskQueryService.handle(new GetTasksForPlannerQuery(teamId));
         var resources = items.stream()
                 .map(DashboardTaskResourceFromReadModelAssembler::toResourceFromReadModel)
                 .toList();

@@ -11,6 +11,7 @@ public record DashboardTaskItem(
         String taskName,
         Status taskStatus,
         LocalDateTime taskStartTime,
+        LocalDateTime taskEndTime,
         Integer taskHours,
         Long taskCategoryId,
         String taskCategoryName
