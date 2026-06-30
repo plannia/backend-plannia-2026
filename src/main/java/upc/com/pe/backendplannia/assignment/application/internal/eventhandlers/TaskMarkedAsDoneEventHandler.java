@@ -1,5 +1,7 @@
 package upc.com.pe.backendplannia.assignment.application.internal.eventhandlers;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import upc.com.pe.backendplannia.assignment.domain.model.commands.CompleteAssignmentCommand;
@@ -10,13 +12,12 @@ import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryServi
 import upc.com.pe.backendplannia.shared.domain.model.events.TaskMarkedAsDoneEvent;
 
 /**
- * Cuando Project marca una tarea como DONE, completamos su asignación activa (si la hay).
- * La finalización pasa así por una sola política: completar libera la carga del miembro y registra su
- * experiencia (vía AssignmentCompletedEvent), igual que el endpoint /assignments/complete. Antes este
- * handler solo registraba experiencia, dejando la carga (activeHours) reservada para siempre.
+ * When Project marks a task as DONE, complete its active assignment if one exists.
  */
 @Component
 public class TaskMarkedAsDoneEventHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(TaskMarkedAsDoneEventHandler.class);
+
     private final AssignmentCommandService assignmentCommandService;
     private final AssignmentQueryService assignmentQueryService;
 
@@ -30,16 +31,46 @@ public class TaskMarkedAsDoneEventHandler {
 
     @EventListener
     public void on(TaskMarkedAsDoneEvent event) {
-        // Solo completamos si la última asignación sigue activa: si ya se completó/desactivó no hay nada
-        // que liberar. Además evita que CompleteAssignmentCommand lance y revierta la actualización de la
-        // tarea en Project (este handler corre dentro de esa transacción).
+        LOGGER.info(
+                "TaskMarkedAsDoneEvent received: taskId={}, userId={}",
+                event.taskId(),
+                event.userId()
+        );
+
         boolean hasActiveAssignment = assignmentQueryService
                 .handle(new GetLatestAssignmentByTaskIdQuery(event.taskId()))
                 .map(LatestAssignmentSnapshot::isActive)
                 .orElse(false);
+        LOGGER.info(
+                "TaskMarkedAsDoneEvent active assignment check: taskId={}, userId={}, hasActiveAssignment={}",
+                event.taskId(),
+                event.userId(),
+                hasActiveAssignment
+        );
 
         if (hasActiveAssignment) {
-            assignmentCommandService.handle(new CompleteAssignmentCommand(event.taskId()));
+            try {
+                LOGGER.info(
+                        "Completing active assignment from task DONE event: taskId={}, userId={}",
+                        event.taskId(),
+                        event.userId()
+                );
+                assignmentCommandService.handle(new CompleteAssignmentCommand(event.taskId()));
+            } catch (RuntimeException exception) {
+                LOGGER.error(
+                        "Failed to complete assignment from task DONE event: taskId={}, userId={}",
+                        event.taskId(),
+                        event.userId(),
+                        exception
+                );
+                throw exception;
+            }
+        } else {
+            LOGGER.info(
+                    "Skipping assignment completion because latest assignment is not active: taskId={}, userId={}",
+                    event.taskId(),
+                    event.userId()
+            );
         }
     }
 }

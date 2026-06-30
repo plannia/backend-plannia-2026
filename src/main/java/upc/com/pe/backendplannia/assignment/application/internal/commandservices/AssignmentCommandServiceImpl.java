@@ -209,21 +209,51 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
     @Override
     @Transactional
     public Optional<Assignment> handle(CompleteAssignmentCommand command) {
+        LOGGER.info("Complete assignment requested: taskId={}", command.taskId());
+
         var assignment = assignmentRepository.findByTaskIdAndStatus(command.taskId(), AssignmentStatus.ACTIVE)
                 .orElseThrow(() -> new IllegalArgumentException("Active assignment with this task id not found"));
+        LOGGER.info(
+                "Active assignment found for completion: assignmentId={}, taskId={}, userId={}, status={}, active={}",
+                assignment.getId(),
+                assignment.getTaskId(),
+                assignment.getUserId(),
+                assignment.getStatus(),
+                assignment.isActive()
+        );
 
         assignment.complete();
         var savedAssignment = assignmentRepository.save(assignment);
+        LOGGER.info(
+                "Assignment marked completed: assignmentId={}, taskId={}, userId={}, status={}, active={}",
+                savedAssignment.getId(),
+                savedAssignment.getTaskId(),
+                savedAssignment.getUserId(),
+                savedAssignment.getStatus(),
+                savedAssignment.isActive()
+        );
 
         // Resolvemos aquí el requisito (horas + embedding) y lo enviamos en el evento; el handler
         // registra la experiencia y libera la carga del miembro dentro de esta misma transacción.
         var taskRequirement = taskRequirementGateway.requireByTaskId(savedAssignment.getTaskId());
+        LOGGER.info(
+                "Task requirement resolved for completed assignment: taskId={}, userId={}, estimatedHours={}, embeddingDim={}",
+                savedAssignment.getTaskId(),
+                savedAssignment.getUserId(),
+                taskRequirement.estimatedHours(),
+                taskRequirement.requirementsEmbedding().dimension()
+        );
         applicationEventPublisher.publishEvent(new AssignmentCompletedEvent(
                 savedAssignment.getTaskId(),
                 savedAssignment.getUserId(),
                 taskRequirement.estimatedHours(),
                 taskRequirement.requirementsEmbedding()
         ));
+        LOGGER.info(
+                "AssignmentCompletedEvent published: taskId={}, userId={}",
+                savedAssignment.getTaskId(),
+                savedAssignment.getUserId()
+        );
 
         return Optional.of(savedAssignment);
     }

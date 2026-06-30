@@ -53,10 +53,12 @@ public class Assignment extends AuditableAbstractAggregateRoot<Assignment> {
 
     public void complete() {
         this.status = AssignmentStatus.COMPLETED;
+        this.isActive = false;
     }
 
     public void cancel() {
         this.status = AssignmentStatus.CANCELLED;
+        this.isActive = false;
     }
 
     public void deactivate() {

@@ -92,7 +92,12 @@ public class Task extends AuditableAbstractAggregateRoot<Task> {
     }
 
     public void update(UpdateTaskCommand command) {
-        this.status = Status.valueOf(command.status().toUpperCase());
+        var nextStatus = Status.valueOf(command.status().toUpperCase());
+        if (this.status == Status.DONE && nextStatus != Status.DONE) {
+            throw new IllegalArgumentException("Completed task cannot change status");
+        }
+
+        this.status = nextStatus;
         if (status == Status.IN_PROGRESS) {
             if (this.startTime == null) {
                 this.startTime = LocalDateTime.now();

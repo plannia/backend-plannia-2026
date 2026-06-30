@@ -1,5 +1,7 @@
 package upc.com.pe.backendplannia.project.infrastructure.acl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.TaskRequirement;
 import upc.com.pe.backendplannia.assignment.domain.services.TaskRequirementResolver;
@@ -13,6 +15,8 @@ import java.util.stream.Stream;
 
 @Service
 public class ProjectContextTaskRequirementResolver implements TaskRequirementResolver {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProjectContextTaskRequirementResolver.class);
+
     private final TaskRepository taskRepository;
     private final ProfileEmbeddingService profileEmbeddingService;
 
@@ -26,18 +30,44 @@ public class ProjectContextTaskRequirementResolver implements TaskRequirementRes
 
     @Override
     public Optional<TaskRequirement> resolveByTaskId(Long taskId) {
+        LOGGER.info("Resolving task requirement: taskId={}", taskId);
         return taskRepository.findById(taskId).map(this::toTaskRequirement);
     }
 
     private TaskRequirement toTaskRequirement(Task task) {
         var description = buildTaskDescription(task);
-        return new TaskRequirement(
+        LOGGER.info(
+                "Task requirement source loaded: taskId={}, hours={}, priority={}, difficulty={}, descriptionLength={}",
                 task.getId(),
-                profileEmbeddingService.generateEmbedding(description),
                 task.getHours(),
-                task.getPriority().name(),
-                task.getDifficulty().name()
+                task.getPriority(),
+                task.getDifficulty(),
+                description.length()
         );
+
+        try {
+            var embedding = profileEmbeddingService.generateEmbedding(description);
+            LOGGER.info(
+                    "Task requirement embedding generated: taskId={}, embeddingDim={}",
+                    task.getId(),
+                    embedding.dimension()
+            );
+            return new TaskRequirement(
+                    task.getId(),
+                    embedding,
+                    task.getHours(),
+                    task.getPriority().name(),
+                    task.getDifficulty().name()
+            );
+        } catch (RuntimeException exception) {
+            LOGGER.error(
+                    "Failed to generate task requirement embedding: taskId={}, descriptionLength={}",
+                    task.getId(),
+                    description.length(),
+                    exception
+            );
+            throw exception;
+        }
     }
 
     private static String buildTaskDescription(Task task) {

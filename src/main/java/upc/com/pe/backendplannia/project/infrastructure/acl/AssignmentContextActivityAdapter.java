@@ -1,5 +1,7 @@
 package upc.com.pe.backendplannia.project.infrastructure.acl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetLatestAssignmentByTaskIdQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTaskIdsByLatestAssignmentUserIdQuery;
@@ -12,6 +14,8 @@ import java.util.Optional;
 
 @Service
 public class AssignmentContextActivityAdapter implements AssignmentActivityPort {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AssignmentContextActivityAdapter.class);
+
     private final AssignmentQueryService assignmentQueryService;
 
     public AssignmentContextActivityAdapter(AssignmentQueryService assignmentQueryService) {
@@ -20,15 +24,28 @@ public class AssignmentContextActivityAdapter implements AssignmentActivityPort 
 
     @Override
     public boolean isLatestAssignmentUserActive(Long taskId) {
-        return assignmentQueryService.handle(new GetLatestAssignmentByTaskIdQuery(taskId))
-                .map(LatestAssignmentSnapshot::isActive)
-                .orElse(false);
+        var snapshot = assignmentQueryService.handle(new GetLatestAssignmentByTaskIdQuery(taskId));
+        LOGGER.info(
+                "Resolved latest assignment active state: taskId={}, found={}, userId={}, active={}",
+                taskId,
+                snapshot.isPresent(),
+                snapshot.map(LatestAssignmentSnapshot::userId).orElse(null),
+                snapshot.map(LatestAssignmentSnapshot::isActive).orElse(false)
+        );
+        return snapshot.map(LatestAssignmentSnapshot::isActive).orElse(false);
     }
 
     @Override
     public Optional<Long> findLatestAssignmentUserId(Long taskId) {
-        return assignmentQueryService.handle(new GetLatestAssignmentByTaskIdQuery(taskId))
-                .map(LatestAssignmentSnapshot::userId);
+        var snapshot = assignmentQueryService.handle(new GetLatestAssignmentByTaskIdQuery(taskId));
+        LOGGER.info(
+                "Resolved latest assignment user: taskId={}, found={}, userId={}, active={}",
+                taskId,
+                snapshot.isPresent(),
+                snapshot.map(LatestAssignmentSnapshot::userId).orElse(null),
+                snapshot.map(LatestAssignmentSnapshot::isActive).orElse(false)
+        );
+        return snapshot.map(LatestAssignmentSnapshot::userId);
     }
 
     @Override

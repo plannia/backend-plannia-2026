@@ -7,6 +7,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.test.util.ReflectionTestUtils;
 import upc.com.pe.backendplannia.assignment.application.internal.commandservices.AssignmentCommandServiceImpl;
 import upc.com.pe.backendplannia.assignment.application.internal.outboundservices.TaskRequirementGateway;
 import upc.com.pe.backendplannia.assignment.application.internal.queryservices.AssignmentQueryServiceImpl;
@@ -18,6 +19,7 @@ import upc.com.pe.backendplannia.assignment.domain.model.commands.ConfirmRecomme
 import upc.com.pe.backendplannia.assignment.domain.model.commands.CreateAssignmentCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.events.AssignmentCompletedEvent;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetAssignmentsByUserIdQuery;
+import upc.com.pe.backendplannia.assignment.domain.model.queries.GetLatestAssignmentByTaskIdQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.BacklogTask;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
@@ -285,6 +287,7 @@ class AssignmentApplicationServicesTests {
 
         assertThat(result).isPresent();
         assertThat(result.get().getStatus()).isEqualTo(AssignmentStatus.COMPLETED);
+        assertThat(result.get().isActive()).isFalse();
         // El evento ahora transporta horas y embedding para que el handler actualice el perfil.
         assertThat(applicationEvents.stream(AssignmentCompletedEvent.class))
                 .contains(new AssignmentCompletedEvent(
@@ -399,6 +402,22 @@ class AssignmentApplicationServicesTests {
         assertThat(result)
                 .extracting(Assignment::getTaskId)
                 .containsExactly(TASK_ID, 502L);
+    }
+
+    @Test
+    void handleGetLatestAssignmentByTaskIdTreatsCompletedAssignmentAsInactiveEvenWithStaleFlag() {
+        var completedAssignment = new Assignment(new CreateAssignmentCommand(BEST_USER_ID, TASK_ID, 1f, 1f, 1f, 1f));
+        completedAssignment.complete();
+        ReflectionTestUtils.setField(completedAssignment, "isActive", true);
+
+        when(assignmentRepository.findFirstByTaskIdOrderByCreatedAtDesc(TASK_ID))
+                .thenReturn(Optional.of(completedAssignment));
+
+        var result = assignmentQueryService.handle(new GetLatestAssignmentByTaskIdQuery(TASK_ID));
+
+        assertThat(result).isPresent();
+        assertThat(result.get().userId()).isEqualTo(BEST_USER_ID);
+        assertThat(result.get().isActive()).isFalse();
     }
 
     private TaskRequirement taskRequirement() {

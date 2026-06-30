@@ -1,5 +1,7 @@
 package upc.com.pe.backendplannia.profile.application.internal.commandservices;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import upc.com.pe.backendplannia.profile.application.internal.outboundservices.ai.ProfileEmbeddingService;
@@ -20,6 +22,8 @@ import java.util.Optional;
 
 @Service
 public class MemberProfileCommandServiceImpl implements MemberProfileCommandService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MemberProfileCommandServiceImpl.class);
+
     // Jornada semanal típica; el miembro la ajusta al completar su perfil.
     private static final float DEFAULT_MAX_HOURS = 40f;
 
@@ -123,15 +127,67 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
     @Override
     public Optional<MemberProfile> handle(UpdateActiveHoursCommand command) {
         var memberProfile = findByUserIdOrThrow(command.userId());
-        memberProfile.updateActiveHours(command.hours());
-        return Optional.of(memberProfileRepository.save(memberProfile));
+        LOGGER.info(
+                "Updating active hours: userId={}, addHours={}, currentActiveHours={}, maxHours={}",
+                command.userId(),
+                command.hours(),
+                memberProfile.getActiveHours(),
+                memberProfile.getMaxHours()
+        );
+        try {
+            memberProfile.updateActiveHours(command.hours());
+            var savedProfile = memberProfileRepository.save(memberProfile);
+            LOGGER.info(
+                    "Active hours updated: userId={}, activeHours={}, maxHours={}",
+                    command.userId(),
+                    savedProfile.getActiveHours(),
+                    savedProfile.getMaxHours()
+            );
+            return Optional.of(savedProfile);
+        } catch (RuntimeException exception) {
+            LOGGER.error(
+                    "Failed to update active hours: userId={}, addHours={}, currentActiveHours={}, maxHours={}",
+                    command.userId(),
+                    command.hours(),
+                    memberProfile.getActiveHours(),
+                    memberProfile.getMaxHours(),
+                    exception
+            );
+            throw exception;
+        }
     }
 
     @Override
     public Optional<MemberProfile> handle(ReduceActiveHoursCommand command) {
         var memberProfile = findByUserIdOrThrow(command.userId());
-        memberProfile.reduceActiveHours(command.hours());
-        return Optional.of(memberProfileRepository.save(memberProfile));
+        LOGGER.info(
+                "Reducing active hours: userId={}, reduceHours={}, currentActiveHours={}, maxHours={}",
+                command.userId(),
+                command.hours(),
+                memberProfile.getActiveHours(),
+                memberProfile.getMaxHours()
+        );
+        try {
+            memberProfile.reduceActiveHours(command.hours());
+            var savedProfile = memberProfileRepository.save(memberProfile);
+            LOGGER.info(
+                    "Active hours reduced: userId={}, activeHours={}, maxHours={}",
+                    command.userId(),
+                    savedProfile.getActiveHours(),
+                    savedProfile.getMaxHours()
+            );
+            return Optional.of(savedProfile);
+        } catch (RuntimeException exception) {
+            LOGGER.error(
+                    "Failed to reduce active hours: userId={}, reduceHours={}, currentActiveHours={}, maxHours={}",
+                    command.userId(),
+                    command.hours(),
+                    memberProfile.getActiveHours(),
+                    memberProfile.getMaxHours(),
+                    exception
+            );
+            throw exception;
+        }
     }
 
     private MemberProfile findByUserIdOrThrow(Long userId) {
