@@ -1,5 +1,6 @@
 package upc.com.pe.backendplannia.project.infrastructure.persistence.jpa.specifications;
 
+import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.domain.Specification;
 import upc.com.pe.backendplannia.project.domain.model.aggregates.Task;
 import upc.com.pe.backendplannia.project.domain.model.valueobjects.Difficulty;
@@ -51,5 +52,15 @@ public final class TaskSpecifications {
 
     public static Specification<Task> isAssigned(boolean assigned) {
         return (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("isAssigned"), assigned);
+    }
+
+    public static Specification<Task> withCategoryFetched() {
+        return (root, query, criteriaBuilder) -> {
+            if (query != null && !Long.class.equals(query.getResultType())) {
+                root.fetch("category", JoinType.INNER);
+                query.distinct(true);
+            }
+            return criteriaBuilder.conjunction();
+        };
     }
 }

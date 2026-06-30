@@ -94,9 +94,15 @@ public class Task extends AuditableAbstractAggregateRoot<Task> {
     public void update(UpdateTaskCommand command) {
         this.status = Status.valueOf(command.status().toUpperCase());
         if (status == Status.IN_PROGRESS) {
-            this.startTime = LocalDateTime.now();
+            if (this.startTime == null) {
+                this.startTime = LocalDateTime.now();
+            }
         } else if (status == Status.DONE) {
             this.endTime = LocalDateTime.now();
+            if (this.startTime == null) {
+                int durationHours = this.hours != null && this.hours > 0 ? this.hours : 1;
+                this.startTime = this.endTime.minusHours(durationHours);
+            }
         }
         if (command.limitDate() != null) {
             this.limitDate = command.limitDate();

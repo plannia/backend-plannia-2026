@@ -91,8 +91,9 @@ public class TaskQueryServiceImpl implements TaskQueryService {
         }
 
         var specification = TaskSpecifications.byTeamId(query.teamId())
-                .and(TaskSpecifications.hasStatus(Status.IN_PROGRESS))
-                .and(TaskSpecifications.isAssigned(true));
+                .and(TaskSpecifications.isAssigned(true))
+                .and(TaskSpecifications.withCategoryFetched())
+                .and(TaskSpecifications.hasStatus(Status.IN_PROGRESS));
 
         return taskRepository.findAll(specification).stream()
                 .map(this::toDashboardTaskItem)
@@ -108,7 +109,8 @@ public class TaskQueryServiceImpl implements TaskQueryService {
         }
 
         var baseSpec = TaskSpecifications.byTeamId(query.teamId())
-                .and(TaskSpecifications.isAssigned(true));
+                .and(TaskSpecifications.isAssigned(true))
+                .and(TaskSpecifications.withCategoryFetched());
 
         var inProgressTasks = taskRepository.findAll(
                 baseSpec.and(TaskSpecifications.hasStatus(Status.IN_PROGRESS))
@@ -116,7 +118,7 @@ public class TaskQueryServiceImpl implements TaskQueryService {
         var doneTasks = taskRepository.findAll(
                 baseSpec.and(TaskSpecifications.hasStatus(Status.DONE))
         ).stream()
-                .filter(task -> task.getStartTime() != null && task.getEndTime() != null)
+                .filter(task -> task.getEndTime() != null)
                 .toList();
 
         return Stream.concat(inProgressTasks.stream(), doneTasks.stream())
@@ -144,18 +146,32 @@ public class TaskQueryServiceImpl implements TaskQueryService {
     private Optional<DashboardTaskItem> toDashboardTaskItem(Task task) {
         return assignmentActivityPort.findLatestAssignmentUserId(task.getId())
                 .flatMap(userId -> teamMemberPort.findNameByUserId(userId)
-                        .map(userName -> new DashboardTaskItem(
-                                userId,
-                                userName,
-                                task.getId(),
-                                task.getTitle(),
-                                task.getStatus(),
-                                task.getStartTime(),
-                                task.getEndTime(),
-                                task.getHours(),
-                                task.getCategory().getId(),
-                                task.getCategory().getName()
-                        )));
+                        .map(userName -> {
+                            var startTime = resolveTaskStartTime(task);
+                            return new DashboardTaskItem(
+                                    userId,
+                                    userName,
+                                    task.getId(),
+                                    task.getTitle(),
+                                    task.getStatus(),
+                                    startTime,
+                                    task.getEndTime(),
+                                    task.getHours(),
+                                    task.getCategory().getId(),
+                                    task.getCategory().getName()
+                            );
+                        }));
+    }
+
+    private static java.time.LocalDateTime resolveTaskStartTime(Task task) {
+        if (task.getStartTime() != null) {
+            return task.getStartTime();
+        }
+        if (task.getStatus() == Status.DONE && task.getEndTime() != null) {
+            int durationHours = task.getHours() != null && task.getHours() > 0 ? task.getHours() : 1;
+            return task.getEndTime().minusHours(durationHours);
+        }
+        return null;
     }
 
     private static boolean hasText(String value) {
