@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -18,14 +19,12 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
-import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 import upc.com.pe.backendplannia.iam.infrastructure.authorization.sfs.filters.SignInJsonBodyFilter;
 import upc.com.pe.backendplannia.iam.infrastructure.authorization.sfs.pipeline.BearerAuthorizationRequestFilter;
 import upc.com.pe.backendplannia.iam.infrastructure.hashing.bcrypt.BCryptHashingService;
 import upc.com.pe.backendplannia.iam.infrastructure.tokens.jwt.BearerTokenService;
 import upc.com.pe.backendplannia.shared.infrastructure.exceptions.ApiError;
-
-import java.util.List;
 
 /**
  * Web Security Configuration.
@@ -50,6 +49,8 @@ public class WebSecurityConfiguration {
     private final BCryptHashingService hashingService;
 
     private final AuthenticationEntryPoint unauthorizedRequestHandler;
+
+    private final CorsConfigurationSource corsConfigurationSource;
 
     /**
      * This method creates the Bearer Authorization Request Filter.
@@ -101,13 +102,7 @@ public class WebSecurityConfiguration {
      */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http.cors(configurer -> configurer.configurationSource(_ -> {
-            var cors = new CorsConfiguration();
-            cors.setAllowedOrigins(List.of("*"));
-            cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-            cors.setAllowedHeaders(List.of("*"));
-            return cors;
-        }));
+        http.cors(cors -> cors.configurationSource(corsConfigurationSource));
         http.csrf(csrfConfigurer -> csrfConfigurer.disable())
                 .exceptionHandling(exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(unauthorizedRequestHandler)
@@ -126,6 +121,7 @@ public class WebSecurityConfiguration {
                 )
                 .sessionManagement( customizer -> customizer.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(
                                 "/api/v1/authentication/**",
                                 "/api/v1/teams/**",
@@ -158,12 +154,14 @@ public class WebSecurityConfiguration {
             @Qualifier("defaultUserDetailsService") UserDetailsService userDetailsService,
             BearerTokenService tokenService,
             BCryptHashingService hashingService,
-            @Qualifier("restAuthenticationEntryPoint") AuthenticationEntryPoint authenticationEntryPoint
+            @Qualifier("restAuthenticationEntryPoint") AuthenticationEntryPoint authenticationEntryPoint,
+            CorsConfigurationSource corsConfigurationSource
     ) {
         this.userDetailsService = userDetailsService;
         this.tokenService = tokenService;
         this.hashingService = hashingService;
         this.unauthorizedRequestHandler = authenticationEntryPoint;
+        this.corsConfigurationSource = corsConfigurationSource;
     }
 
 }
