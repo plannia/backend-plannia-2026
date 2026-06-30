@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 
 @Component
-class GanttOAuthFlowService {
+public class GanttOAuthFlowService {
     private final GanttGoogleProperties properties;
 
     GanttOAuthFlowService(GanttGoogleProperties properties) {
