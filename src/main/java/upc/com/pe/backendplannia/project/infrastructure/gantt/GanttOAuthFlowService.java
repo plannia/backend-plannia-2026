@@ -14,11 +14,11 @@ import java.security.GeneralSecurityException;
 public class GanttOAuthFlowService {
     private final GanttGoogleProperties properties;
 
-    GanttOAuthFlowService(GanttGoogleProperties properties) {
+    public GanttOAuthFlowService(GanttGoogleProperties properties) {
         this.properties = properties;
     }
 
-    String buildAuthorizationUrl() {
+    public String buildAuthorizationUrl() {
         ensureWebOAuthConfigured();
         try {
             return flow().newAuthorizationUrl()
@@ -32,18 +32,18 @@ public class GanttOAuthFlowService {
         }
     }
 
-    GoogleTokenResponse exchangeAuthorizationCode(String code) {
+    public GoogleTokenResponse exchangeAuthorizationCode(String code) {
         ensureWebOAuthConfigured();
         try {
             return flow().newTokenRequest(code)
                     .setRedirectUri(properties.getOauthRedirectUri())
                     .execute();
-        } catch (IOException exception) {
+        } catch (IOException | GeneralSecurityException exception) {
             throw new GanttChartIntegrationException("Failed to exchange OAuth authorization code", exception);
         }
     }
 
-    boolean isWebSetupEnabled() {
+    public boolean isWebSetupEnabled() {
         return properties.hasOAuthClientCredentials()
                 && properties.hasOauthRedirectUri()
                 && properties.hasOauthSetupSecret();
