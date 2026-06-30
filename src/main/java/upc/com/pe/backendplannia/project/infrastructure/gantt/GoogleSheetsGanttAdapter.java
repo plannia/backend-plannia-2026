@@ -64,14 +64,12 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
 
     @PostConstruct
     void init() {
-        // Fail-soft: una integración OPCIONAL (export Gantt) mal configurada NO debe tumbar el arranque
-        // de TODO el backend. Si la config de Google falla, lo registramos y dejamos el adapter inactivo;
-        // los endpoints de Gantt responderán 502 al usarse (ver ensureReady), pero la app levanta normal.
+        // Fail-soft: Gantt es opcional; una config inválida NO debe tumbar el backend.
         try {
             if (!properties.hasOutputFolder()) {
-                throw new GanttChartIntegrationException(
-                        "gantt.google.output-folder-id (GANTT_OUTPUT_FOLDER_ID) is required. "
-                                + "Use a folder in your Google Drive (OAuth/Gmail) or inside a Shared Drive (service account).");
+                disableGantt("gantt.google.output-folder-id (GANTT_OUTPUT_FOLDER_ID) is required. "
+                        + "Use a folder in your Google Drive (OAuth/Gmail) or inside a Shared Drive (service account).");
+                return;
             }
 
             var credentials = credentialsProvider.build();
@@ -85,15 +83,32 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
             driveService = new Drive.Builder(transport, jsonFactory, requestInitializer)
                     .setApplicationName(APPLICATION_NAME)
                     .build();
-            validateOutputFolder();
+
+            var folderError = validateOutputFolder();
+            if (folderError != null) {
+                disableGantt(folderError);
+                return;
+            }
+
             initError = null;
             LOGGER.info("Gantt Google Sheets inicializado correctamente.");
         } catch (Exception exception) {
-            initError = exception.getMessage();
-            sheetsService = null;
-            driveService = null;
-            LOGGER.error("Gantt Google deshabilitado por configuración inválida: {}. El backend arranca igual; "
-                    + "los endpoints de Gantt devolverán 502 hasta corregir la config.", initError, exception);
+            disableGantt(exception.getMessage() != null ? exception.getMessage() : exception.getClass().getSimpleName(), exception);
+        }
+    }
+
+    private void disableGantt(String reason) {
+        disableGantt(reason, null);
+    }
+
+    private void disableGantt(String reason, Throwable cause) {
+        initError = reason;
+        sheetsService = null;
+        driveService = null;
+        if (cause != null) {
+            LOGGER.error("Gantt Google deshabilitado: {}. El backend arranca igual; solo /gantt devolverá 502.", reason, cause);
+        } else {
+            LOGGER.warn("Gantt Google deshabilitado: {}. El backend arranca igual; solo /gantt devolverá 502.", reason);
         }
     }
 
@@ -110,7 +125,7 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     public GanttSpreadsheetResult createSpreadsheet(String title) {
         ensureReady();
         try {
-            // Always create in the Shared Drive folder; syncContent fills the Gantt data programmatically.
+            // Create in the output folder; syncContent fills the Gantt data programmatically.
             if (properties.hasOutputFolder()) {
                 return createEmptySpreadsheet(title);
             }
@@ -126,36 +141,28 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         }
     }
 
-    private void validateOutputFolder() throws IOException {
+    /** @return null if valid; otherwise a human-readable reason why Gantt was disabled */
+    private String validateOutputFolder() {
         try {
             var folder = driveService.files().get(properties.getOutputFolderId())
                     .setSupportsAllDrives(true)
                     .setFields("id,name,driveId,mimeType,trashed")
                     .execute();
             if (Boolean.TRUE.equals(folder.getTrashed())) {
-                throw new GanttChartIntegrationException(
-                        "GANTT_OUTPUT_FOLDER_ID points to a trashed folder: " + properties.getOutputFolderId());
+                return "GANTT_OUTPUT_FOLDER_ID points to a trashed folder: " + properties.getOutputFolderId();
             }
-            if (folder.getDriveId() == null || folder.getDriveId().isBlank()) {
-                if (properties.usesServiceAccount()) {
-                    throw new GanttChartIntegrationException(
-                            "GANTT_OUTPUT_FOLDER_ID must be a folder inside a Google Shared Drive (Unidad compartida), "
-                                    + "not My Drive. Folder '" + folder.getName() + "' is not on a Shared Drive. "
-                                    + "For personal Gmail, configure GANTT_OAUTH_REFRESH_TOKEN instead of the service account.");
-                }
+            if ((folder.getDriveId() == null || folder.getDriveId().isBlank()) && properties.usesServiceAccount()) {
+                return "GANTT_OUTPUT_FOLDER_ID must be inside a Google Shared Drive when using a service account. "
+                        + "Folder '" + folder.getName() + "' is in My Drive. "
+                        + "For personal Gmail, set GANTT_OAUTH_REFRESH_TOKEN (and remove GANTT_GOOGLE_CREDENTIALS_JSON).";
             }
-        } catch (GanttChartIntegrationException exception) {
-            throw exception;
+            return null;
         } catch (IOException exception) {
             var hint = properties.usesOAuthUser()
                     ? "Ensure you authorized the same Gmail account that owns the folder."
                     : "Ensure the service account is Content manager on the Shared Drive.";
-            throw new GanttChartIntegrationException(
-                    "Cannot access Gantt output folder " + properties.getOutputFolderId() + ": "
-                            + GoogleApiIOExceptionHelper.describe(exception)
-                            + ". " + hint,
-                    exception
-            );
+            return "Cannot access Gantt output folder " + properties.getOutputFolderId() + ": "
+                    + GoogleApiIOExceptionHelper.describe(exception) + ". " + hint;
         }
     }
 
