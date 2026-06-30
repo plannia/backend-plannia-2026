@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -49,7 +50,7 @@ public class CategoryController {
     public CategoryController(
             CategoryCommandService categoryCommandService,
             CategoryQueryService categoryQueryService,
-            GanttChartCommandService ganttChartCommandService
+            @Autowired(required = false) GanttChartCommandService ganttChartCommandService
     ) {
         this.categoryCommandService = categoryCommandService;
         this.categoryQueryService = categoryQueryService;
@@ -239,7 +240,11 @@ public class CategoryController {
                     )
             )
     })
-    public ResponseEntity<CategoryResource> createCategoryGantt(@PathVariable Long categoryId) {
+    public ResponseEntity<?> createCategoryGantt(@PathVariable Long categoryId) {
+        if (ganttChartCommandService == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(new MessageResource("La función Gantt está deshabilitada temporalmente."));
+        }
         var category = ganttChartCommandService.handle(new CreateCategoryGanttCommand(categoryId));
         if (category.isEmpty()) {
             return ResponseEntity.notFound().build();

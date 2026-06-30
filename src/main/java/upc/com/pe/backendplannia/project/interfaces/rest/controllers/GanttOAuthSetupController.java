@@ -1,6 +1,7 @@
 package upc.com.pe.backendplannia.project.interfaces.rest.controllers;
 
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,7 @@ import java.io.IOException;
  * After obtaining the refresh token, add it to Azure as GANTT_OAUTH_REFRESH_TOKEN.
  */
 @RestController
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 @RequestMapping("/api/v1/gantt/oauth")
 public class GanttOAuthSetupController {
     private final GanttGoogleProperties properties;

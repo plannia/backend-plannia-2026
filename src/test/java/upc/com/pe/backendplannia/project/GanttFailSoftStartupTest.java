@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "JWT_SECRET=integration-test-secret-please-32-chars",
         "notifications.email.transport=log",
         // Escenario del crash: integración Google habilitada pero sin config válida (sin output folder).
+        "gantt.enabled=true",
         "gantt.google.enabled=true"
 })
 class GanttFailSoftStartupTest {

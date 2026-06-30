@@ -42,6 +42,7 @@ import java.util.Locale;
 import java.util.Map;
 
 @Service
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 @ConditionalOnProperty(name = "gantt.google.enabled", havingValue = "true")
 public class GoogleSheetsGanttAdapter implements GanttChartPort {
     private static final Logger LOGGER = LoggerFactory.getLogger(GoogleSheetsGanttAdapter.class);

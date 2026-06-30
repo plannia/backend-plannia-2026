@@ -4,6 +4,7 @@ import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.UserCredentials;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import upc.com.pe.backendplannia.project.application.internal.gantt.GanttChartIntegrationException;
 
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Component
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 class GoogleGanttCredentialsProvider {
     private static final List<String> SCOPES = List.of(
             SheetsScopes.SPREADSHEETS,

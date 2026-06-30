@@ -1,5 +1,6 @@
 package upc.com.pe.backendplannia.project.application.internal.gantt;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import upc.com.pe.backendplannia.project.domain.model.aggregates.Category;
 import upc.com.pe.backendplannia.project.domain.model.aggregates.Task;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 public class GanttChartDataBuilder {
     public static final int DATE_PADDING_DAYS = 3;
     public static final int DEFAULT_RANGE_DAYS = 14;

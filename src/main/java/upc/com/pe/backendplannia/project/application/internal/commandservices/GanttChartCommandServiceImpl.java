@@ -1,5 +1,6 @@
 package upc.com.pe.backendplannia.project.application.internal.commandservices;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import upc.com.pe.backendplannia.project.application.internal.gantt.GanttChartDataBuilder;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 public class GanttChartCommandServiceImpl implements GanttChartCommandService {
     private final CategoryRepository categoryRepository;
     private final TaskRepository taskRepository;

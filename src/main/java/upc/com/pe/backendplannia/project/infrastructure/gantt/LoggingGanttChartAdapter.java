@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Service
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 @ConditionalOnProperty(name = "gantt.google.enabled", havingValue = "false", matchIfMissing = true)
 public class LoggingGanttChartAdapter implements GanttChartPort {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggingGanttChartAdapter.class);

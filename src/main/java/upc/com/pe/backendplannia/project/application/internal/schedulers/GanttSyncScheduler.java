@@ -2,6 +2,7 @@ package upc.com.pe.backendplannia.project.application.internal.schedulers;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import upc.com.pe.backendplannia.project.application.internal.gantt.GanttChartIntegrationException;
@@ -10,6 +11,7 @@ import upc.com.pe.backendplannia.project.domain.services.GanttChartCommandServic
 import upc.com.pe.backendplannia.project.infrastructure.persistence.jpa.repositories.CategoryRepository;
 
 @Component
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 public class GanttSyncScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(GanttSyncScheduler.class);
 

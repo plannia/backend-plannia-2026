@@ -4,6 +4,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.googleapis.auth.oauth2.GoogleTokenResponse;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import upc.com.pe.backendplannia.project.application.internal.gantt.GanttChartIntegrationException;
 
@@ -11,6 +12,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 
 @Component
+@ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 public class GanttOAuthFlowService {
     private final GanttGoogleProperties properties;
 
