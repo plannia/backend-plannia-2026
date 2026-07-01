@@ -32,6 +32,7 @@ import upc.com.pe.backendplannia.assignment.domain.services.MemberWorkloadPort;
 import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService;
 import upc.com.pe.backendplannia.assignment.domain.services.TaskAssignmentPort;
 import upc.com.pe.backendplannia.assignment.domain.services.TaskRequirementResolver;
+import upc.com.pe.backendplannia.assignment.domain.services.TeamLeadershipPort;
 import upc.com.pe.backendplannia.assignment.domain.services.UnassignedTaskPort;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
 import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVector;
@@ -93,6 +94,11 @@ class AssignmentApplicationServicesTests {
 
     @MockitoBean
     private UnassignedTaskPort unassignedTaskPort;
+
+    // Sin stub, Mockito devuelve Optional.empty() → no hay líder → no se filtra a nadie (comportamiento
+    // de los tests existentes). Los tests nuevos sí lo stubbean para verificar la exclusión.
+    @MockitoBean
+    private TeamLeadershipPort teamLeadershipPort;
 
     @Test
     void handleCreateAssignmentCommandCreatesActiveAssignment() {
@@ -385,6 +391,48 @@ class AssignmentApplicationServicesTests {
         assertThat(result)
                 .extracting(CandidateProfile::userId)
                 .containsExactly(BEST_USER_ID);
+    }
+
+    @Test
+    void handleGetTopCandidatesQueryExcludesTheTeamLeader() {
+        var taskRequirement = taskRequirement();
+        // El líder tiene el MEJOR perfil, pero como es líder no debe recomendarse: organiza, no ejecuta.
+        var leader = candidate(BEST_USER_ID, vector(1f, 0f, 0f), vector(1f, 0f, 0f), vector(1f, 0f, 0f), 0f, 8f);
+        var member = candidate(SECOND_USER_ID, vector(1f, 0f, 0f), vector(0f, 1f, 0f), vector(1f, 0f, 0f), 0f, 8f);
+
+        when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(taskRequirement));
+        when(candidateProfileProvider.findByTeamId(TEAM_ID)).thenReturn(List.of(leader, member));
+        when(teamLeadershipPort.findLeaderUserId(TEAM_ID)).thenReturn(Optional.of(BEST_USER_ID));
+
+        var result = assignmentQueryService.handle(new GetTopCandidatesQuery(TASK_ID, TEAM_ID));
+
+        assertThat(result)
+                .extracting(CandidateProfile::userId)
+                .containsExactly(SECOND_USER_ID)
+                .doesNotContain(BEST_USER_ID);
+    }
+
+    @Test
+    void handleAutoAssignTeamCommandDoesNotAssignTasksToTheLeader() {
+        // Líder y miembro con perfil idéntico y disponibilidad. La tarea debe ir al MIEMBRO, no al líder.
+        var leader = candidate(BEST_USER_ID, vector(1f, 0f, 0f), vector(1f, 0f, 0f), vector(1f, 0f, 0f), 0f, 8f);
+        var member = candidate(SECOND_USER_ID, vector(1f, 0f, 0f), vector(1f, 0f, 0f), vector(1f, 0f, 0f), 0f, 8f);
+        var task = new TaskRequirement(TASK_ID, vector(1f, 0f, 0f), 2, "HIGH", "MEDIUM");
+
+        when(candidateProfileProvider.findByTeamId(TEAM_ID)).thenReturn(List.of(leader, member));
+        when(teamLeadershipPort.findLeaderUserId(TEAM_ID)).thenReturn(Optional.of(BEST_USER_ID));
+        when(unassignedTaskPort.findUnassignedByTeamId(TEAM_ID)).thenReturn(List.of(
+                new BacklogTask(TASK_ID, 3, 2, LocalDateTime.now().plusDays(1))));
+        when(taskRequirementResolver.resolveByTaskId(TASK_ID)).thenReturn(Optional.of(task));
+        when(assignmentRepository.save(any(Assignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = assignmentCommandService.handle(new AutoAssignTeamCommand(TEAM_ID));
+
+        assertThat(result.skippedTaskIds()).isEmpty();
+        assertThat(result.assignments())
+                .extracting(Assignment::getUserId)
+                .containsExactly(SECOND_USER_ID);
+        verify(memberWorkloadPort).reserveHours(SECOND_USER_ID, task.estimatedHours());
     }
 
     @Test

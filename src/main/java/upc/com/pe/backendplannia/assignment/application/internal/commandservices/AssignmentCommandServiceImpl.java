@@ -23,6 +23,7 @@ import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProv
 import upc.com.pe.backendplannia.assignment.domain.services.MemberWorkloadPort;
 import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService;
 import upc.com.pe.backendplannia.assignment.domain.services.TaskAssignmentPort;
+import upc.com.pe.backendplannia.assignment.domain.services.TeamLeadershipPort;
 import upc.com.pe.backendplannia.assignment.domain.services.UnassignedTaskPort;
 import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.AssignmentStatus;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
@@ -54,6 +55,7 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final TaskAssignmentPort taskAssignmentPort;
     private final UnassignedTaskPort unassignedTaskPort;
+    private final TeamLeadershipPort teamLeadershipPort;
 
     public AssignmentCommandServiceImpl(
             AssignmentRepository assignmentRepository,
@@ -63,7 +65,8 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
             ScoringDomainService scoringDomainService,
             ApplicationEventPublisher applicationEventPublisher,
             TaskAssignmentPort taskAssignmentPort,
-            UnassignedTaskPort unassignedTaskPort
+            UnassignedTaskPort unassignedTaskPort,
+            TeamLeadershipPort teamLeadershipPort
     ) {
         this.assignmentRepository = assignmentRepository;
         this.candidateProfileProvider = candidateProfileProvider;
@@ -73,6 +76,7 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
         this.applicationEventPublisher = applicationEventPublisher;
         this.taskAssignmentPort = taskAssignmentPort;
         this.unassignedTaskPort = unassignedTaskPort;
+        this.teamLeadershipPort = teamLeadershipPort;
     }
 
     @Override
@@ -88,7 +92,7 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
     @Override
     @Transactional
     public AutoAssignmentResult handle(AutoAssignTeamCommand command) {
-        var candidates = candidateProfileProvider.findByTeamId(command.teamId());
+        var candidates = candidatesExcludingLeader(command.teamId());
         var backlog = unassignedTaskPort.findUnassignedByTeamId(command.teamId());
         return autoAssign(candidates, backlog);
     }
@@ -97,9 +101,18 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
     @Override
     @Transactional
     public AutoAssignmentResult handle(AutoAssignProjectCommand command) {
-        var candidates = candidateProfileProvider.findByTeamId(command.teamId());
+        var candidates = candidatesExcludingLeader(command.teamId());
         var backlog = unassignedTaskPort.findUnassignedByCategoryId(command.projectId());
         return autoAssign(candidates, backlog);
+    }
+
+    // El líder organiza, no se le auto-asignan tareas: lo sacamos del pool. Mismo criterio que la
+    // recomendación manual. (Integración futura: hacerlo opcional con un flag includeLeader.)
+    private List<CandidateProfile> candidatesExcludingLeader(Long teamId) {
+        var leaderUserId = teamLeadershipPort.findLeaderUserId(teamId).orElse(null);
+        return candidateProfileProvider.findByTeamId(teamId).stream()
+                .filter(candidate -> !candidate.userId().equals(leaderUserId))
+                .toList();
     }
 
     @Override

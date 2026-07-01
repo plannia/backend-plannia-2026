@@ -15,6 +15,7 @@ import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.Assignment
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryService;
 import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProvider;
 import upc.com.pe.backendplannia.assignment.domain.services.ScoringDomainService;
+import upc.com.pe.backendplannia.assignment.domain.services.TeamLeadershipPort;
 import upc.com.pe.backendplannia.assignment.infrastructure.persistence.jpa.repositories.AssignmentRepository;
 
 import java.util.List;
@@ -30,23 +31,32 @@ public class AssignmentQueryServiceImpl implements AssignmentQueryService {
     private final AssignmentRepository assignmentRepository;
     private final TaskRequirementGateway taskRequirementGateway;
     private final ScoringDomainService scoringDomainService;
+    private final TeamLeadershipPort teamLeadershipPort;
 
     public AssignmentQueryServiceImpl(
             CandidateProfileProvider candidateProfileProvider,
             AssignmentRepository assignmentRepository,
             TaskRequirementGateway taskRequirementGateway,
-            ScoringDomainService scoringDomainService
+            ScoringDomainService scoringDomainService,
+            TeamLeadershipPort teamLeadershipPort
     ) {
         this.candidateProfileProvider = candidateProfileProvider;
         this.assignmentRepository = assignmentRepository;
         this.taskRequirementGateway = taskRequirementGateway;
         this.scoringDomainService = scoringDomainService;
+        this.teamLeadershipPort = teamLeadershipPort;
     }
 
     @Override
     public List<CandidateProfile> handle(GetTopCandidatesQuery query) {
         var taskRequirement = taskRequirementGateway.requireByTaskId(query.taskId());
-        var candidates = candidateProfileProvider.findByTeamId(query.teamId());
+
+        // El líder organiza, no se le recomienda: lo excluimos del pool. (Integración futura: hacerlo
+        // opcional y, en vez de esconderlo, mostrar su score comparado con el resto.)
+        var leaderUserId = teamLeadershipPort.findLeaderUserId(query.teamId()).orElse(null);
+        var candidates = candidateProfileProvider.findByTeamId(query.teamId()).stream()
+                .filter(candidate -> !candidate.userId().equals(leaderUserId))
+                .toList();
 
         return scoringDomainService.rankCandidates(candidates, taskRequirement).stream()
                 .limit(TOP_CANDIDATES_LIMIT)
