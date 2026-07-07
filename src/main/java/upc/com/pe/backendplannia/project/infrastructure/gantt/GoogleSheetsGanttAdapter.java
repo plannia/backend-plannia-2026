@@ -23,6 +23,7 @@ import com.google.api.services.sheets.v4.model.SheetProperties;
 import com.google.api.services.sheets.v4.model.Spreadsheet;
 import com.google.api.services.sheets.v4.model.SpreadsheetProperties;
 import com.google.api.services.sheets.v4.model.TextFormat;
+import com.google.api.services.sheets.v4.model.UnmergeCellsRequest;
 import com.google.api.services.sheets.v4.model.UpdateCellsRequest;
 import com.google.api.services.sheets.v4.model.UpdateDimensionPropertiesRequest;
 import com.google.api.services.sheets.v4.model.UpdateSheetPropertiesRequest;
@@ -282,7 +283,10 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     public void syncContent(String spreadsheetId, GanttChartSnapshot snapshot) {
         ensureReady();
         try {
-            var sheetName = resolvePrimarySheetName(spreadsheetId);
+            var spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
+            var sheetName = primarySheetName(spreadsheet);
+            var existingMerges = primarySheetMerges(spreadsheet);
+
             var rows = buildRows(snapshot);
             var totalColumns = FIXED_COLUMNS + snapshot.dateColumns().size();
             var totalRows = rows.size();
@@ -299,7 +303,13 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
                     .setValueInputOption("USER_ENTERED")
                     .execute();
 
-            var requests = buildFormatRequests(rows, snapshot, totalRows, totalColumns);
+            var requests = new ArrayList<Request>();
+            // Quita los merges de la sync anterior: si no, un merge nuevo que se solape con uno
+            // viejo (las fechas cambian entre syncs) hace que Google rechace todo el batch.
+            for (var merge : existingMerges) {
+                requests.add(new Request().setUnmergeCells(new UnmergeCellsRequest().setRange(merge)));
+            }
+            requests.addAll(buildFormatRequests(rows, snapshot, totalRows, totalColumns));
             if (!requests.isEmpty()) {
                 sheetsService.spreadsheets()
                         .batchUpdate(spreadsheetId, new BatchUpdateSpreadsheetRequest().setRequests(requests))
@@ -313,8 +323,7 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         }
     }
 
-    private String resolvePrimarySheetName(String spreadsheetId) throws IOException {
-        var spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
+    private String primarySheetName(Spreadsheet spreadsheet) {
         if (spreadsheet.getSheets() == null || spreadsheet.getSheets().isEmpty()) {
             return "Sheet1";
         }
@@ -322,6 +331,14 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         return sheetProperties != null && sheetProperties.getTitle() != null
                 ? sheetProperties.getTitle()
                 : "Sheet1";
+    }
+
+    private List<GridRange> primarySheetMerges(Spreadsheet spreadsheet) {
+        if (spreadsheet.getSheets() == null || spreadsheet.getSheets().isEmpty()) {
+            return List.of();
+        }
+        var merges = spreadsheet.getSheets().getFirst().getMerges();
+        return merges != null ? merges : List.of();
     }
 
     private String quoteSheetRange(String sheetName, String range) {
