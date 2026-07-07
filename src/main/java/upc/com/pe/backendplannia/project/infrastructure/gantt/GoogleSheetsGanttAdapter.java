@@ -113,6 +113,16 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         }
     }
 
+    /** true si Sheets+Drive inicializaron OK en el arranque. Lo consume /api/v1/gantt/status. */
+    public boolean isReady() {
+        return sheetsService != null && driveService != null;
+    }
+
+    /** Motivo por el que Gantt-Google quedó inactivo, o null si inicializó bien. */
+    public String initError() {
+        return initError;
+    }
+
     // Lanza un error claro (lo traduce el controller a 502) si la integración no quedó inicializada.
     private void ensureReady() {
         if (sheetsService == null || driveService == null) {
