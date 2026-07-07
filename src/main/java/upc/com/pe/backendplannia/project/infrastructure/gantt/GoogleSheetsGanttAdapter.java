@@ -7,18 +7,25 @@ import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.Permission;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
-import com.google.api.services.sheets.v4.model.ClearValuesRequest;
 import com.google.api.services.sheets.v4.model.CellData;
+import com.google.api.services.sheets.v4.model.CellFormat;
+import com.google.api.services.sheets.v4.model.ClearValuesRequest;
 import com.google.api.services.sheets.v4.model.Color;
 import com.google.api.services.sheets.v4.model.DimensionProperties;
+import com.google.api.services.sheets.v4.model.DimensionRange;
+import com.google.api.services.sheets.v4.model.GridProperties;
 import com.google.api.services.sheets.v4.model.GridRange;
+import com.google.api.services.sheets.v4.model.MergeCellsRequest;
 import com.google.api.services.sheets.v4.model.RepeatCellRequest;
 import com.google.api.services.sheets.v4.model.Request;
 import com.google.api.services.sheets.v4.model.RowData;
+import com.google.api.services.sheets.v4.model.SheetProperties;
 import com.google.api.services.sheets.v4.model.Spreadsheet;
 import com.google.api.services.sheets.v4.model.SpreadsheetProperties;
+import com.google.api.services.sheets.v4.model.TextFormat;
 import com.google.api.services.sheets.v4.model.UpdateCellsRequest;
 import com.google.api.services.sheets.v4.model.UpdateDimensionPropertiesRequest;
+import com.google.api.services.sheets.v4.model.UpdateSheetPropertiesRequest;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import com.google.auth.http.HttpCredentialsAdapter;
 import jakarta.annotation.PostConstruct;
@@ -34,12 +41,16 @@ import upc.com.pe.backendplannia.project.domain.model.readmodels.GanttTaskRow;
 import upc.com.pe.backendplannia.project.domain.services.GanttChartPort;
 
 import java.io.IOException;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
@@ -47,9 +58,21 @@ import java.util.Map;
 public class GoogleSheetsGanttAdapter implements GanttChartPort {
     private static final Logger LOGGER = LoggerFactory.getLogger(GoogleSheetsGanttAdapter.class);
     private static final String APPLICATION_NAME = "Plannia";
-    private static final int FIXED_COLUMNS = 5;
-    private static final DateTimeFormatter DATE_HEADER_FORMAT = DateTimeFormatter.ofPattern("MMM d", Locale.US);
-    private static final DateTimeFormatter TASK_DATE_FORMAT = DateTimeFormatter.ofPattern("M/d/yy");
+    private static final int FIXED_COLUMNS = 10;
+    private static final String[] FIXED_HEADERS = {
+            "TAREA", "RESPONSABLE", "ESTADO", "PRIORIDAD", "DIFICULTAD", "HORAS", "AVANCE", "INICIO", "FIN", "LÍMITE"
+    };
+    private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.of("es"));
+    private static final DateTimeFormatter TASK_DATE_FORMAT = DateTimeFormatter.ofPattern("d/MM");
+
+    // Paleta de la hoja (RGB 0..1).
+    private static final Color TITLE_BG = rgb(0.20, 0.28, 0.44);
+    private static final Color TITLE_FG = rgb(1, 1, 1);
+    private static final Color HEADER_BG = rgb(0.90, 0.92, 0.96);
+    private static final Color SECTION_BG = rgb(0.94, 0.95, 0.97);
+    private static final Color WEEKEND_BG = rgb(0.95, 0.96, 0.98);
+    private static final Color TODAY_BG = rgb(1.0, 0.89, 0.60);
+    private static final Color WHITE = rgb(1, 1, 1);
 
     private final GanttGoogleProperties properties;
     private final GoogleGanttCredentialsProvider credentialsProvider;
@@ -260,22 +283,23 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         ensureReady();
         try {
             var sheetName = resolvePrimarySheetName(spreadsheetId);
-            var values = buildSheetValues(snapshot);
-            var totalRows = values.size();
-            var totalColumns = values.stream().mapToInt(List::size).max().orElse(FIXED_COLUMNS);
+            var rows = buildRows(snapshot);
+            var totalColumns = FIXED_COLUMNS + snapshot.dateColumns().size();
+            var totalRows = rows.size();
             var endColumn = columnLetter(totalColumns);
 
             sheetsService.spreadsheets().values()
-                    .clear(spreadsheetId, quoteSheetRange(sheetName, "A1:" + endColumn + totalRows), new ClearValuesRequest())
+                    .clear(spreadsheetId, quoteSheetRange(sheetName, "A1:" + endColumn + (totalRows + 5)), new ClearValuesRequest())
                     .execute();
 
-            var body = new ValueRange().setValues(toObjectValues(values));
+            var values = rows.stream().map(row -> (List<Object>) new ArrayList<Object>(row.values())).toList();
+            var body = new ValueRange().setValues(values);
             sheetsService.spreadsheets().values()
                     .update(spreadsheetId, quoteSheetRange(sheetName, "A1"), body)
                     .setValueInputOption("USER_ENTERED")
                     .execute();
 
-            var requests = buildFormatRequests(snapshot, values.size(), totalColumns);
+            var requests = buildFormatRequests(rows, snapshot, totalRows, totalColumns);
             if (!requests.isEmpty()) {
                 sheetsService.spreadsheets()
                         .batchUpdate(spreadsheetId, new BatchUpdateSpreadsheetRequest().setRequests(requests))
@@ -305,162 +329,302 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
         return "'" + escapedName + "'!" + range;
     }
 
-    private List<List<String>> buildSheetValues(GanttChartSnapshot snapshot) {
-        var rows = new ArrayList<List<String>>();
-        rows.add(List.of(snapshot.categoryName() + " — Gantt Plannia"));
-        rows.add(List.of());
-        rows.add(padRow(List.of("Leyenda", "Miembro"), snapshot.dateColumns().size() + FIXED_COLUMNS));
+    // ---------- Construcción de filas (valores + metadatos para formatear) ----------
 
+    private enum Kind { TITLE, SPACER, LEGEND_HEADER, LEGEND, SECTION, MONTH, HEADER, TASK }
+
+    private record Row(Kind kind, List<String> values, GanttTaskRow task, int colorIndex) {
+    }
+
+    private List<Row> buildRows(GanttChartSnapshot snapshot) {
+        var totalColumns = FIXED_COLUMNS + snapshot.dateColumns().size();
+        var colorByUser = new HashMap<Long, Integer>();
+        snapshot.legends().forEach(legend -> colorByUser.put(legend.userId(), legend.colorIndex()));
+
+        var rows = new ArrayList<Row>();
+        rows.add(new Row(Kind.TITLE, pad(List.of(snapshot.categoryName() + " — Gantt Plannia"), totalColumns), null, -1));
+        rows.add(new Row(Kind.SPACER, pad(List.of(), totalColumns), null, -1));
+
+        rows.add(new Row(Kind.LEGEND_HEADER, pad(List.of("MIEMBROS"), totalColumns), null, -1));
         for (var legend : snapshot.legends()) {
-            rows.add(padRow(List.of("", legend.name()), snapshot.dateColumns().size() + FIXED_COLUMNS));
+            rows.add(new Row(Kind.LEGEND, pad(List.of("", legend.name(), legend.email()), totalColumns), null, legend.colorIndex()));
         }
+        rows.add(new Row(Kind.SPACER, pad(List.of(), totalColumns), null, -1));
 
-        rows.add(List.of());
+        rows.add(new Row(Kind.MONTH, monthRow(snapshot.dateColumns(), totalColumns), null, -1));
+        rows.add(new Row(Kind.HEADER, headerRow(snapshot.dateColumns()), null, -1));
 
-        var header = new ArrayList<String>();
-        header.add("TASK");
-        header.add("ASSIGNED TO");
-        header.add("PROGRESS");
-        header.add("START");
-        header.add("END");
-        snapshot.dateColumns().forEach(date -> header.add(DATE_HEADER_FORMAT.format(date)));
-        rows.add(header);
-
-        for (var taskRow : snapshot.taskRows()) {
-            var row = new ArrayList<String>();
-            row.add(taskRow.title());
-            row.add(taskRow.assigneeName());
-            row.add(taskRow.progressLabel());
-            row.add(TASK_DATE_FORMAT.format(taskRow.startDate()));
-            row.add(TASK_DATE_FORMAT.format(taskRow.endDate()));
-            snapshot.dateColumns().forEach(date -> row.add(isDateInRange(date, taskRow) ? "■" : ""));
-            rows.add(row);
+        Long currentAssignee = null;
+        var first = true;
+        for (var task : snapshot.taskRows()) {
+            if (first || !Objects.equals(task.assigneeUserId(), currentAssignee)) {
+                currentAssignee = task.assigneeUserId();
+                first = false;
+                var sectionColor = GanttChartDataBuilder.resolveColorIndex(currentAssignee, colorByUser);
+                rows.add(new Row(Kind.SECTION, pad(List.of("▸ " + task.assigneeName()), totalColumns), null, sectionColor));
+            }
+            var colorIndex = GanttChartDataBuilder.resolveColorIndex(task.assigneeUserId(), colorByUser);
+            rows.add(new Row(Kind.TASK, taskRow(task, snapshot.dateColumns()), task, colorIndex));
         }
-
         return rows;
     }
 
-    private List<Request> buildFormatRequests(GanttChartSnapshot snapshot, int totalRows, int totalColumns) {
-        var requests = new ArrayList<Request>();
-        var colorByUserId = new HashMap<Long, Integer>();
-        snapshot.legends().forEach(legend -> colorByUserId.put(legend.userId(), legend.colorIndex()));
+    private List<String> monthRow(List<LocalDate> dateColumns, int totalColumns) {
+        var row = new ArrayList<String>();
+        for (int i = 0; i < FIXED_COLUMNS; i++) {
+            row.add("");
+        }
+        YearMonth previous = null;
+        for (var date : dateColumns) {
+            var current = YearMonth.from(date);
+            if (!current.equals(previous)) {
+                row.add(capitalize(MONTH_FORMAT.format(date)));
+                previous = current;
+            } else {
+                row.add("");
+            }
+        }
+        return pad(row, totalColumns);
+    }
 
-        var legendStartRow = 3;
-        for (int index = 0; index < snapshot.legends().size(); index++) {
-            var legend = snapshot.legends().get(index);
-            requests.add(colorCellRequest(legendStartRow + index, 0, legend.colorIndex()));
+    private List<String> headerRow(List<LocalDate> dateColumns) {
+        var row = new ArrayList<String>(List.of(FIXED_HEADERS));
+        dateColumns.forEach(date -> row.add(String.valueOf(date.getDayOfMonth())));
+        return row;
+    }
+
+    private List<String> taskRow(GanttTaskRow task, List<LocalDate> dateColumns) {
+        var row = new ArrayList<String>();
+        row.add(task.title());
+        row.add(task.assigneeName());
+        row.add(task.statusLabel());
+        row.add(task.priorityLabel());
+        row.add(task.difficultyLabel());
+        row.add(task.hours() == null ? "" : String.valueOf(task.hours()));
+        row.add(progressBar(task.progressLabel()));
+        row.add(TASK_DATE_FORMAT.format(task.startDate()));
+        row.add(TASK_DATE_FORMAT.format(task.endDate()));
+        row.add(task.dueDate() != null ? TASK_DATE_FORMAT.format(task.dueDate()) : "");
+        var bar = task.estimated() ? "▒" : "■";
+        dateColumns.forEach(date -> row.add(isDateInRange(date, task) ? bar : ""));
+        return row;
+    }
+
+    private String progressBar(String progressLabel) {
+        var pct = parsePercent(progressLabel);
+        var filled = Math.max(0, Math.min(10, Math.round(pct / 10f)));
+        return "█".repeat(filled) + "░".repeat(10 - filled) + "  " + progressLabel;
+    }
+
+    private int parsePercent(String label) {
+        try {
+            return Integer.parseInt(label.replace("%", "").trim());
+        } catch (NumberFormatException exception) {
+            return 0;
+        }
+    }
+
+    // ---------- Formato ----------
+
+    private List<Request> buildFormatRequests(List<Row> rows, GanttChartSnapshot snapshot, int totalRows, int totalColumns) {
+        var requests = new ArrayList<Request>();
+        var dateColumns = snapshot.dateColumns();
+
+        var headerRowIndex = indexOf(rows, Kind.HEADER);
+        var firstTaskRegionRow = headerRowIndex + 1;
+        var today = LocalDate.now();
+
+        // 0) Reset de formato en toda el área usada (evita colores viejos en re-syncs).
+        requests.add(fillRange(0, totalRows, 0, totalColumns, WHITE, false));
+
+        // 1) Sombreado de columnas (fin de semana + hoy) sobre la zona de tareas. Va ANTES de las barras.
+        for (int d = 0; d < dateColumns.size(); d++) {
+            var date = dateColumns.get(d);
+            var col = FIXED_COLUMNS + d;
+            if (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+                requests.add(fillRange(firstTaskRegionRow, totalRows, col, col + 1, WEEKEND_BG, false));
+            }
+            if (date.equals(today)) {
+                requests.add(fillRange(firstTaskRegionRow, totalRows, col, col + 1, TODAY_BG, false));
+            }
         }
 
-        var headerRowIndex = legendStartRow + snapshot.legends().size() + 1;
-        requests.add(freezeRequest(headerRowIndex + 1, 1));
-        requests.add(resizeColumnRequest(0, 220));
-        requests.add(resizeColumnRequest(1, 160));
-
-        var taskStartRow = headerRowIndex + 1;
-        for (int taskIndex = 0; taskIndex < snapshot.taskRows().size(); taskIndex++) {
-            var taskRow = snapshot.taskRows().get(taskIndex);
-            var colorIndex = GanttChartDataBuilder.resolveColorIndex(taskRow.assigneeUserId(), colorByUserId);
-            var rowIndex = taskStartRow + taskIndex;
-
-            for (int dateIndex = 0; dateIndex < snapshot.dateColumns().size(); dateIndex++) {
-                var date = snapshot.dateColumns().get(dateIndex);
-                if (isDateInRange(date, taskRow)) {
-                    requests.add(colorCellRequest(rowIndex, FIXED_COLUMNS + dateIndex, colorIndex));
+        // 2) Barras de las tareas (pintan sobre el sombreado).
+        for (int r = 0; r < rows.size(); r++) {
+            var row = rows.get(r);
+            if (row.kind() != Kind.TASK) {
+                continue;
+            }
+            for (int d = 0; d < dateColumns.size(); d++) {
+                if (isDateInRange(dateColumns.get(d), row.task())) {
+                    requests.add(barCell(r, FIXED_COLUMNS + d, row.colorIndex(), row.task().estimated()));
                 }
             }
         }
 
-        if (totalColumns > 0 && totalRows > 0) {
-            requests.add(boldHeaderRequest(headerRowIndex, totalColumns));
+        // 3) Estructura y estilos (no compiten con las barras del grid).
+        for (int r = 0; r < rows.size(); r++) {
+            var row = rows.get(r);
+            switch (row.kind()) {
+                // El título NO se combina: una celda combinada a todo lo ancho choca con el
+                // freeze de la primera columna. El texto en A1 se desborda sobre el fondo coloreado.
+                case TITLE -> requests.add(titleFormat(r, totalColumns));
+                case LEGEND_HEADER -> requests.add(boldRange(r, 0, 1));
+                case LEGEND -> requests.add(barCell(r, 0, row.colorIndex(), false));
+                case SECTION -> requests.add(sectionFormat(r, totalColumns, row.colorIndex()));
+                case MONTH -> requests.addAll(monthFormat(r, dateColumns));
+                case HEADER -> requests.add(headerFormat(r, totalColumns));
+                default -> {
+                    // TASK/SPACER: sin estilo extra aquí.
+                }
+            }
+        }
+
+        // 4) Congelar (header + primera columna) y anchos.
+        requests.add(freezeRequest(headerRowIndex + 1, 1));
+        requests.add(resizeColumnRequest(0, 240));
+        requests.add(resizeColumnRequest(1, 150));
+        for (int d = 0; d < dateColumns.size(); d++) {
+            requests.add(resizeColumnRequest(FIXED_COLUMNS + d, 26));
         }
 
         return requests;
     }
 
-    private Request colorCellRequest(int rowIndex, int columnIndex, int colorIndex) {
-        var rgb = colorIndex < 0 ? GanttColorPalette.UNASSIGNED_COLOR : GanttColorPalette.COLORS[colorIndex];
-        var color = new Color()
-                .setRed((float) rgb[0])
-                .setGreen((float) rgb[1])
-                .setBlue((float) rgb[2]);
-
-        var cellData = new CellData().setUserEnteredFormat(
-                new com.google.api.services.sheets.v4.model.CellFormat().setBackgroundColor(color)
-        );
-
-        var updateCells = new UpdateCellsRequest()
-                .setRange(new GridRange()
-                        .setSheetId(0)
-                        .setStartRowIndex(rowIndex)
-                        .setEndRowIndex(rowIndex + 1)
-                        .setStartColumnIndex(columnIndex)
-                        .setEndColumnIndex(columnIndex + 1))
-                .setRows(List.of(new RowData().setValues(List.of(cellData))))
-                .setFields("userEnteredFormat.backgroundColor");
-
-        return new Request().setUpdateCells(updateCells);
+    private int indexOf(List<Row> rows, Kind kind) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).kind() == kind) {
+                return i;
+            }
+        }
+        return 0;
     }
 
-    private Request boldHeaderRequest(int headerRowIndex, int totalColumns) {
-        var boldFormat = new com.google.api.services.sheets.v4.model.CellFormat()
-                .setTextFormat(new com.google.api.services.sheets.v4.model.TextFormat().setBold(true));
+    private Request barCell(int rowIndex, int columnIndex, int colorIndex, boolean dim) {
+        var rgb = colorIndex < 0 ? GanttColorPalette.UNASSIGNED_COLOR : GanttColorPalette.COLORS[colorIndex];
+        var color = dim ? rgb(blend(rgb[0]), blend(rgb[1]), blend(rgb[2])) : rgb(rgb[0], rgb[1], rgb[2]);
+        return new Request().setRepeatCell(new RepeatCellRequest()
+                .setRange(range(rowIndex, rowIndex + 1, columnIndex, columnIndex + 1))
+                .setCell(new CellData().setUserEnteredFormat(new CellFormat().setBackgroundColor(color)))
+                .setFields("userEnteredFormat.backgroundColor"));
+    }
 
-        var repeatCell = new RepeatCellRequest()
-                .setRange(new GridRange()
-                        .setSheetId(0)
-                        .setStartRowIndex(headerRowIndex)
-                        .setEndRowIndex(headerRowIndex + 1)
-                        .setStartColumnIndex(0)
-                        .setEndColumnIndex(totalColumns))
-                .setCell(new CellData().setUserEnteredFormat(boldFormat))
-                .setFields("userEnteredFormat.textFormat.bold");
+    private Request fillRange(int startRow, int endRow, int startCol, int endCol, Color color, boolean bold) {
+        var format = new CellFormat().setBackgroundColor(color);
+        var fields = "userEnteredFormat.backgroundColor";
+        if (bold) {
+            format.setTextFormat(new TextFormat().setBold(true));
+            fields += ",userEnteredFormat.textFormat.bold";
+        } else {
+            format.setTextFormat(new TextFormat().setBold(false));
+            fields += ",userEnteredFormat.textFormat.bold";
+        }
+        return new Request().setRepeatCell(new RepeatCellRequest()
+                .setRange(range(startRow, endRow, startCol, endCol))
+                .setCell(new CellData().setUserEnteredFormat(format))
+                .setFields(fields));
+    }
 
-        return new Request().setRepeatCell(repeatCell);
+    private Request titleFormat(int rowIndex, int totalColumns) {
+        var format = new CellFormat()
+                .setBackgroundColor(TITLE_BG)
+                .setHorizontalAlignment("LEFT")
+                .setVerticalAlignment("MIDDLE")
+                .setTextFormat(new TextFormat().setBold(true).setFontSize(14).setForegroundColor(TITLE_FG));
+        return new Request().setRepeatCell(new RepeatCellRequest()
+                .setRange(range(rowIndex, rowIndex + 1, 0, totalColumns))
+                .setCell(new CellData().setUserEnteredFormat(format))
+                .setFields("userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,textFormat)"));
+    }
+
+    private Request headerFormat(int rowIndex, int totalColumns) {
+        var format = new CellFormat()
+                .setBackgroundColor(HEADER_BG)
+                .setHorizontalAlignment("CENTER")
+                .setTextFormat(new TextFormat().setBold(true));
+        return new Request().setRepeatCell(new RepeatCellRequest()
+                .setRange(range(rowIndex, rowIndex + 1, 0, totalColumns))
+                .setCell(new CellData().setUserEnteredFormat(format))
+                .setFields("userEnteredFormat(backgroundColor,horizontalAlignment,textFormat)"));
+    }
+
+    private Request sectionFormat(int rowIndex, int totalColumns, int colorIndex) {
+        var format = new CellFormat()
+                .setBackgroundColor(SECTION_BG)
+                .setTextFormat(new TextFormat().setBold(true));
+        return new Request().setRepeatCell(new RepeatCellRequest()
+                .setRange(range(rowIndex, rowIndex + 1, 0, totalColumns))
+                .setCell(new CellData().setUserEnteredFormat(format))
+                .setFields("userEnteredFormat(backgroundColor,textFormat)"));
+    }
+
+    private List<Request> monthFormat(int rowIndex, List<LocalDate> dateColumns) {
+        var requests = new ArrayList<Request>();
+        int runStart = 0;
+        YearMonth runMonth = dateColumns.isEmpty() ? null : YearMonth.from(dateColumns.getFirst());
+        for (int i = 1; i <= dateColumns.size(); i++) {
+            var current = i < dateColumns.size() ? YearMonth.from(dateColumns.get(i)) : null;
+            if (current == null || !current.equals(runMonth)) {
+                var startCol = FIXED_COLUMNS + runStart;
+                var endCol = FIXED_COLUMNS + i;
+                if (endCol - startCol > 1) {
+                    requests.add(new Request().setMergeCells(new MergeCellsRequest()
+                            .setRange(range(rowIndex, rowIndex + 1, startCol, endCol))
+                            .setMergeType("MERGE_ALL")));
+                }
+                requests.add(new Request().setRepeatCell(new RepeatCellRequest()
+                        .setRange(range(rowIndex, rowIndex + 1, startCol, endCol))
+                        .setCell(new CellData().setUserEnteredFormat(new CellFormat()
+                                .setHorizontalAlignment("CENTER")
+                                .setTextFormat(new TextFormat().setBold(true))))
+                        .setFields("userEnteredFormat(horizontalAlignment,textFormat)")));
+                runStart = i;
+                runMonth = current;
+            }
+        }
+        return requests;
+    }
+
+    private Request boldRange(int rowIndex, int startCol, int endCol) {
+        return new Request().setRepeatCell(new RepeatCellRequest()
+                .setRange(range(rowIndex, rowIndex + 1, startCol, endCol))
+                .setCell(new CellData().setUserEnteredFormat(new CellFormat().setTextFormat(new TextFormat().setBold(true))))
+                .setFields("userEnteredFormat.textFormat.bold"));
     }
 
     private Request freezeRequest(int frozenRows, int frozenColumns) {
-        var gridProperties = new com.google.api.services.sheets.v4.model.GridProperties()
+        var gridProperties = new GridProperties()
                 .setFrozenRowCount(frozenRows)
                 .setFrozenColumnCount(frozenColumns);
-
-        return new Request().setUpdateSheetProperties(
-                new com.google.api.services.sheets.v4.model.UpdateSheetPropertiesRequest()
-                        .setProperties(new com.google.api.services.sheets.v4.model.SheetProperties()
-                                .setSheetId(0)
-                                .setGridProperties(gridProperties))
-                        .setFields("gridProperties.frozenRowCount,gridProperties.frozenColumnCount")
-        );
+        return new Request().setUpdateSheetProperties(new UpdateSheetPropertiesRequest()
+                .setProperties(new SheetProperties().setSheetId(0).setGridProperties(gridProperties))
+                .setFields("gridProperties.frozenRowCount,gridProperties.frozenColumnCount"));
     }
 
     private Request resizeColumnRequest(int columnIndex, int pixelSize) {
-        return new Request().setUpdateDimensionProperties(
-                new UpdateDimensionPropertiesRequest()
-                        .setRange(new com.google.api.services.sheets.v4.model.DimensionRange()
-                                .setSheetId(0)
-                                .setDimension("COLUMNS")
-                                .setStartIndex(columnIndex)
-                                .setEndIndex(columnIndex + 1))
-                        .setProperties(new DimensionProperties().setPixelSize(pixelSize))
-                        .setFields("pixelSize")
-        );
+        return new Request().setUpdateDimensionProperties(new UpdateDimensionPropertiesRequest()
+                .setRange(new DimensionRange().setSheetId(0).setDimension("COLUMNS")
+                        .setStartIndex(columnIndex).setEndIndex(columnIndex + 1))
+                .setProperties(new DimensionProperties().setPixelSize(pixelSize))
+                .setFields("pixelSize"));
     }
 
-    private boolean isDateInRange(java.time.LocalDate date, GanttTaskRow taskRow) {
+    private GridRange range(int startRow, int endRow, int startCol, int endCol) {
+        return new GridRange().setSheetId(0)
+                .setStartRowIndex(startRow).setEndRowIndex(endRow)
+                .setStartColumnIndex(startCol).setEndColumnIndex(endCol);
+    }
+
+    private boolean isDateInRange(LocalDate date, GanttTaskRow taskRow) {
         return !date.isBefore(taskRow.startDate()) && !date.isAfter(taskRow.endDate());
     }
 
-    private List<String> padRow(List<String> row, int targetSize) {
+    private List<String> pad(List<String> row, int targetSize) {
         var padded = new ArrayList<>(row);
         while (padded.size() < targetSize) {
             padded.add("");
         }
         return padded;
-    }
-
-    private List<List<Object>> toObjectValues(List<List<String>> values) {
-        return values.stream()
-                .map(row -> row.stream().<Object>map(value -> value).toList())
-                .toList();
     }
 
     private String columnLetter(int columnCount) {
@@ -472,5 +636,23 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
             column = (column - 1) / 26;
         }
         return builder.toString();
+    }
+
+    private String capitalize(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
+    }
+
+    private static double blend(double channel) {
+        return channel + (1.0 - channel) * 0.55;
+    }
+
+    private static Color rgb(double red, double green, double blue) {
+        return new Color()
+                .setRed((float) red)
+                .setGreen((float) green)
+                .setBlue((float) blue);
     }
 }

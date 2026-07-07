@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +25,9 @@ public class GanttChartDataBuilder {
     public static final int DATE_PADDING_DAYS = 3;
     public static final int DEFAULT_RANGE_DAYS = 14;
     public static final int MAX_COLOR_INDEX = 9;
+    private static final int HOURS_PER_WORKDAY = 8;
+    private static final int DEFAULT_ESTIMATED_SPAN_DAYS = 3;
+    private static final int UNASSIGNED_ORDER = Integer.MAX_VALUE;
 
     private final AssignmentActivityPort assignmentActivityPort;
     private final TeamMemberPort teamMemberPort;
@@ -38,7 +42,11 @@ public class GanttChartDataBuilder {
 
     public GanttChartSnapshot build(Category category, List<Task> tasks) {
         var legends = buildLegends(category);
-        var taskRows = buildTaskRows(tasks);
+        var memberOrder = new HashMap<Long, Integer>();
+        for (int index = 0; index < legends.size(); index++) {
+            memberOrder.put(legends.get(index).userId(), index);
+        }
+        var taskRows = buildTaskRows(tasks, memberOrder);
         var dateColumns = buildDateColumns(taskRows);
 
         return new GanttChartSnapshot(category.getName(), legends, taskRows, dateColumns);
@@ -66,12 +74,20 @@ public class GanttChartDataBuilder {
         return legends;
     }
 
-    private List<GanttTaskRow> buildTaskRows(List<Task> tasks) {
+    // Incluye toda tarea salvo CANCELLED. Las TO_DO (o sin startTime) entran con fechas
+    // estimadas. Se agrupan por responsable (orden de la leyenda) y, dentro, por fecha.
+    private List<GanttTaskRow> buildTaskRows(List<Task> tasks, Map<Long, Integer> memberOrder) {
         return tasks.stream()
-                .filter(this::isGanttEligible)
-                .sorted(Comparator.comparing(Task::getStartTime, Comparator.nullsLast(Comparator.naturalOrder())))
+                .filter(this::isIncluded)
                 .map(this::toTaskRow)
+                .sorted(Comparator
+                        .comparingInt((GanttTaskRow row) -> memberOrder.getOrDefault(row.assigneeUserId(), UNASSIGNED_ORDER))
+                        .thenComparing(GanttTaskRow::startDate, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
+    }
+
+    private boolean isIncluded(Task task) {
+        return task.getStatus() != Status.CANCELLED;
     }
 
     private GanttTaskRow toTaskRow(Task task) {
@@ -80,25 +96,46 @@ public class GanttChartDataBuilder {
                 ? "Sin asignar"
                 : teamMemberPort.findNameByUserId(assigneeUserId).orElse("Sin asignar");
 
-        var startDate = task.getStartTime().toLocalDate();
-        var endDate = resolveEndDate(task);
+        var started = task.getStartTime() != null
+                && (task.getStatus() == Status.IN_PROGRESS || task.getStatus() == Status.DONE);
+
+        LocalDate startDate;
+        LocalDate endDate;
+        boolean estimated;
+        if (started) {
+            startDate = task.getStartTime().toLocalDate();
+            endDate = resolveEndDate(task);
+            estimated = false;
+        } else {
+            endDate = task.getLimitDate() != null
+                    ? task.getLimitDate().toLocalDate()
+                    : LocalDate.now().plusDays(DEFAULT_ESTIMATED_SPAN_DAYS);
+            startDate = endDate.minusDays(estimatedSpanDays(task) - 1L);
+            estimated = true;
+        }
 
         return new GanttTaskRow(
                 task.getId(),
                 task.getTitle(),
                 assigneeUserId,
                 assigneeName,
+                statusLabel(task.getStatus()),
+                priorityLabel(task),
+                difficultyLabel(task),
+                task.getHours(),
                 formatProgress(task),
                 startDate,
-                endDate
+                endDate,
+                task.getLimitDate() != null ? task.getLimitDate().toLocalDate() : null,
+                estimated
         );
     }
 
-    private boolean isGanttEligible(Task task) {
-        if (task.getStartTime() == null) {
-            return false;
+    private int estimatedSpanDays(Task task) {
+        if (task.getHours() == null || task.getHours() <= 0) {
+            return DEFAULT_ESTIMATED_SPAN_DAYS;
         }
-        return task.getStatus() == Status.IN_PROGRESS || task.getStatus() == Status.DONE;
+        return Math.max(1, (int) Math.ceil((double) task.getHours() / HOURS_PER_WORKDAY));
     }
 
     private LocalDate resolveEndDate(Task task) {
@@ -108,9 +145,46 @@ public class GanttChartDataBuilder {
         return LocalDate.now();
     }
 
+    private String statusLabel(Status status) {
+        if (status == null) {
+            return "—";
+        }
+        return switch (status) {
+            case TO_DO -> "Pendiente";
+            case IN_PROGRESS -> "En progreso";
+            case DONE -> "Hecho";
+            case CANCELLED -> "Cancelada";
+        };
+    }
+
+    private String priorityLabel(Task task) {
+        if (task.getPriority() == null) {
+            return "—";
+        }
+        return switch (task.getPriority()) {
+            case LOW -> "Baja";
+            case MEDIUM -> "Media";
+            case HIGH -> "Alta";
+        };
+    }
+
+    private String difficultyLabel(Task task) {
+        if (task.getDifficulty() == null) {
+            return "—";
+        }
+        return switch (task.getDifficulty()) {
+            case EASY -> "Fácil";
+            case MEDIUM -> "Media";
+            case HARD -> "Difícil";
+        };
+    }
+
     private String formatProgress(Task task) {
         if (task.getStatus() == Status.DONE) {
             return "100%";
+        }
+        if (task.getStatus() == Status.TO_DO) {
+            return "0%";
         }
 
         if (task.getLimitDate() == null || task.getStartTime() == null) {

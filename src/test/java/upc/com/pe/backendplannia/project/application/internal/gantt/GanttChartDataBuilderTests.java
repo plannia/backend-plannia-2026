@@ -13,6 +13,7 @@ import upc.com.pe.backendplannia.project.domain.services.TeamMemberPort;
 
 import upc.com.pe.backendplannia.shared.test.AuditableEntityTestSupport;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -30,16 +31,13 @@ class GanttChartDataBuilderTests {
     private final GanttChartDataBuilder builder = new GanttChartDataBuilder(assignmentActivityPort, teamMemberPort);
 
     @Test
-    void buildsSnapshotWithEligibleTasksOnly() {
+    void includesTodoTasksGroupedByMemberInLegendOrder() {
         var category = categoryWithMembers();
+        // Alice (member 1) -> in-progress ; Bob (member 2) -> done ; unassigned -> to-do
         var inProgressTask = task(category, "In progress task", Status.IN_PROGRESS,
-                LocalDateTime.of(2026, 6, 20, 10, 0),
-                null,
-                LocalDateTime.of(2026, 6, 30, 18, 0));
+                LocalDateTime.of(2026, 6, 20, 10, 0), null, LocalDateTime.of(2026, 6, 30, 18, 0));
         var doneTask = task(category, "Done task", Status.DONE,
-                LocalDateTime.of(2026, 6, 18, 9, 0),
-                LocalDateTime.of(2026, 6, 22, 17, 0),
-                LocalDateTime.of(2026, 6, 25, 18, 0));
+                LocalDateTime.of(2026, 6, 18, 9, 0), LocalDateTime.of(2026, 6, 22, 17, 0), LocalDateTime.of(2026, 6, 25, 18, 0));
         var todoTask = task(category, "Todo task", Status.TO_DO, null, null, LocalDateTime.of(2026, 7, 1, 18, 0));
 
         when(assignmentActivityPort.findLatestAssignmentUserId(inProgressTask.getId())).thenReturn(Optional.of(MEMBER_ONE_ID));
@@ -53,15 +51,60 @@ class GanttChartDataBuilderTests {
 
         var snapshot = builder.build(category, List.of(inProgressTask, doneTask, todoTask));
 
-        assertThat(snapshot.taskRows()).hasSize(2);
-        assertThat(snapshot.taskRows().get(0).title()).isEqualTo("Done task");
-        assertThat(snapshot.taskRows().get(1).progressLabel()).isNotEqualTo("100%");
+        // TO_DO is now included (3 rows), ordered by member (legend order), unassigned last.
+        assertThat(snapshot.taskRows()).hasSize(3);
+        assertThat(snapshot.taskRows().get(0).title()).isEqualTo("In progress task");
+        assertThat(snapshot.taskRows().get(0).assigneeName()).isEqualTo("Alice");
+        assertThat(snapshot.taskRows().get(1).title()).isEqualTo("Done task");
+        assertThat(snapshot.taskRows().get(2).title()).isEqualTo("Todo task");
+        assertThat(snapshot.taskRows().get(2).assigneeName()).isEqualTo("Sin asignar");
         assertThat(snapshot.legends()).hasSize(2);
-        assertThat(snapshot.dateColumns()).isNotEmpty();
     }
 
     @Test
-    void usesDefaultDateRangeWhenThereAreNoEligibleTasks() {
+    void mapsStatusProgressAndNewColumns() {
+        var category = categoryWithMembers();
+        var doneTask = task(category, "Done task", Status.DONE,
+                LocalDateTime.of(2026, 6, 18, 9, 0), LocalDateTime.of(2026, 6, 22, 17, 0), LocalDateTime.of(2026, 6, 25, 18, 0));
+        var todoTask = task(category, "Todo task", Status.TO_DO, null, null, LocalDateTime.of(2026, 7, 1, 18, 0));
+
+        when(assignmentActivityPort.findLatestAssignmentUserId(doneTask.getId())).thenReturn(Optional.of(MEMBER_ONE_ID));
+        when(teamMemberPort.findByUserId(MEMBER_ONE_ID))
+                .thenReturn(Optional.of(new TeamMemberSnapshot(MEMBER_ONE_ID, "Alice", "alice@test.com")));
+        when(teamMemberPort.findNameByUserId(MEMBER_ONE_ID)).thenReturn(Optional.of("Alice"));
+
+        var snapshot = builder.build(category, List.of(doneTask, todoTask));
+
+        var done = snapshot.taskRows().stream().filter(r -> r.title().equals("Done task")).findFirst().orElseThrow();
+        assertThat(done.statusLabel()).isEqualTo("Hecho");
+        assertThat(done.progressLabel()).isEqualTo("100%");
+        assertThat(done.priorityLabel()).isEqualTo("Alta");
+        assertThat(done.difficultyLabel()).isEqualTo("Media");
+        assertThat(done.hours()).isEqualTo(4);
+        assertThat(done.estimated()).isFalse();
+
+        var todo = snapshot.taskRows().stream().filter(r -> r.title().equals("Todo task")).findFirst().orElseThrow();
+        assertThat(todo.statusLabel()).isEqualTo("Pendiente");
+        assertThat(todo.progressLabel()).isEqualTo("0%");
+        assertThat(todo.estimated()).isTrue();
+        // Estimated dates anchor on the limit date (hours=4 -> 1 workday span -> start == end == limit).
+        assertThat(todo.endDate()).isEqualTo(LocalDate.of(2026, 7, 1));
+        assertThat(todo.startDate()).isEqualTo(LocalDate.of(2026, 7, 1));
+        assertThat(todo.dueDate()).isEqualTo(LocalDate.of(2026, 7, 1));
+    }
+
+    @Test
+    void excludesCancelledTasks() {
+        var category = categoryWithMembers();
+        var cancelled = task(category, "Cancelled task", Status.CANCELLED, null, null, LocalDateTime.of(2026, 7, 1, 18, 0));
+
+        var snapshot = builder.build(category, List.of(cancelled));
+
+        assertThat(snapshot.taskRows()).isEmpty();
+    }
+
+    @Test
+    void usesDefaultDateRangeWhenThereAreNoTasks() {
         var category = categoryWithMembers();
         var snapshot = builder.build(category, List.of());
 
