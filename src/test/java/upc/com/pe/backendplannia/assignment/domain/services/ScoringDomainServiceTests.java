@@ -40,16 +40,34 @@ class ScoringDomainServiceTests {
 
     @Test
     void experienceAboveFloorIsRescaled() {
-        // cos([1,1],[1,0]) = 0.707 -> (0.707 - 0.35) / (1 - 0.35) = 0.549
+        // cos([1,1],[1,0]) = 0.707 -> (0.707 - 0.42) / (1 - 0.42) = 0.495
         var candidate = candidate(vec(1f, 0f), vec(1f, 1f));
         var task = task(vec(1f, 0f));
 
-        assertThat(service.calculateExperienceMatch(candidate, task)).isCloseTo(0.549f, within(0.01f));
+        assertThat(service.calculateExperienceMatch(candidate, task)).isCloseTo(0.495f, within(0.01f));
+    }
+
+    @Test
+    void interestBelowRelevanceFloorCountsAsZero() {
+        // cos([1,0],[1,4]) = 0.243 < 0.30: interés no relacionado (línea base) NO suma.
+        var candidate = new CandidateProfile(1L, vec(1f, 0f), vec(1f, 0f), vec(1f, 0f), 0f, 40f);
+        var task = task(vec(1f, 4f));
+
+        assertThat(service.calculateInterestMatch(candidate, task)).isZero();
+    }
+
+    @Test
+    void interestAboveFloorIsRescaled() {
+        // cos([1,1],[1,0]) = 0.707 -> (0.707 - 0.30) / (1 - 0.30) = 0.582
+        var candidate = new CandidateProfile(1L, vec(1f, 0f), vec(1f, 0f), vec(1f, 1f), 0f, 40f);
+        var task = task(vec(1f, 0f));
+
+        assertThat(service.calculateInterestMatch(candidate, task)).isCloseTo(0.582f, within(0.01f));
     }
 
     @Test
     void skillMatchStaysRawCosineNotFloored() {
-        // La misma similitud 0.316 se mantiene tal cual para skill: el piso es solo de experiencia (fix #1).
+        // La misma similitud 0.316 se mantiene tal cual para skill: el piso es solo de experiencia/interés.
         var candidate = candidate(vec(1f, 3f), vec(1f, 0f));
         var task = task(vec(1f, 0f));
 

@@ -12,13 +12,15 @@ import java.util.List;
 
 @Service
 public class ScoringDomainService {
-    // Los embeddings de este modelo tienen una "línea base" de similitud alta (~0.3) incluso entre
-    // textos NO relacionados. Sin restar ese piso, cualquier experiencia previa —aunque sea de una
-    // tarea de otro dominio— sumaba ~0.35*0.3 y podía decidir la asignación (p. ej. quien completó
-    // un endpoint de backend ganaba una tarea de IA solo por "haber hecho algo antes"). Contamos solo
-    // la parte de la similitud POR ENCIMA del piso, reescalada a [0,1]: la experiencia irrelevante
-    // queda en 0 y solo pesa la experiencia realmente parecida a la tarea. Tunable.
-    private static final float EXPERIENCE_RELEVANCE_FLOOR = 0.35f;
+    // Los embeddings de este modelo tienen una "línea base" de similitud alta incluso entre textos NO
+    // relacionados (experiencia cross-dominio ~0.40; intereses no relacionados ~0.22). Sin restar ese
+    // piso, cualquier experiencia/interés previo sumaba por la pura línea base y podía decidir la
+    // asignación. Contamos solo la parte de la similitud POR ENCIMA del piso, reescalada a [0,1]: lo
+    // irrelevante queda en 0 y solo pesa lo realmente parecido a la tarea. Los pisos difieren porque
+    // la distribución de cosenos difiere entre señales (tareas completadas vs. strings de interés).
+    // Tunables.
+    private static final float EXPERIENCE_RELEVANCE_FLOOR = 0.42f;
+    private static final float INTEREST_RELEVANCE_FLOOR = 0.30f;
 
     public boolean meetsAvailabilityThreshold(CandidateProfile candidate, TaskRequirement task) {
         return candidate.availableHours() >= task.estimatedHours();
@@ -53,7 +55,8 @@ public class ScoringDomainService {
     }
 
     public float calculateInterestMatch(CandidateProfile candidate, TaskRequirement task) {
-        return calculateMatch(candidate.embeddedInterests(), task.requirementsEmbedding());
+        var similarity = calculateMatch(candidate.embeddedInterests(), task.requirementsEmbedding());
+        return relevanceAboveFloor(similarity, INTEREST_RELEVANCE_FLOOR);
     }
 
     // Ranking con el desglose de cada sub-score (skill/experiencia/interés) + total. Precalculamos una
