@@ -20,6 +20,7 @@ import upc.com.pe.backendplannia.assignment.application.internal.outboundservice
 import upc.com.pe.backendplannia.assignment.application.internal.queryservices.AssignmentQueryServiceImpl;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.ScoredCandidate;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.TaskRequirement;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryService;
 import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProvider;
@@ -118,7 +119,7 @@ class AssignmentLocalLmStudioIntegrationTest {
         logRanking(result, taskRequirement);
         assertThat(result).hasSize(3);
         assertThat(result)
-                .extracting(CandidateProfile::userId)
+                .extracting(scored -> scored.candidate().userId())
                 .containsExactly(BEST_USER_ID, SECOND_USER_ID, THIRD_USER_ID);
     }
 
@@ -157,7 +158,7 @@ class AssignmentLocalLmStudioIntegrationTest {
 
         logRanking(result, taskRequirement);
         assertThat(result)
-                .extracting(CandidateProfile::userId)
+                .extracting(scored -> scored.candidate().userId())
                 .containsExactly(THIRD_USER_ID, BEST_USER_ID);
     }
 
@@ -199,7 +200,7 @@ class AssignmentLocalLmStudioIntegrationTest {
         logRanking(result, taskRequirement);
         // El experto sobrecargado NO aparece pese a tener el mejor match de skill; gana el disponible.
         assertThat(result)
-                .extracting(CandidateProfile::userId)
+                .extracting(scored -> scored.candidate().userId())
                 .containsExactly(SECOND_USER_ID);
     }
 
@@ -302,15 +303,15 @@ class AssignmentLocalLmStudioIntegrationTest {
         }
     }
 
-    private void logRanking(List<CandidateProfile> ranking, TaskRequirement taskRequirement) {
+    private void logRanking(List<ScoredCandidate> ranking, TaskRequirement taskRequirement) {
         log.info("Final ranking returned by AssignmentQueryService");
         for (int i = 0; i < ranking.size(); i++) {
-            var candidate = ranking.get(i);
+            var scored = ranking.get(i);
             log.info(
                     "Ranking position {} | userId={} | score={}",
                     i + 1,
-                    candidate.userId(),
-                    formatScore(scoringDomainService.calculateScore(candidate, taskRequirement))
+                    scored.candidate().userId(),
+                    formatScore(scored.totalScore())
             );
         }
     }

@@ -5,14 +5,14 @@ import upc.com.pe.backendplannia.assignment.domain.model.queries.GetAssignmentsB
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetLatestAssignmentByTaskIdQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTaskIdsByLatestAssignmentUserIdQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
-import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.LatestAssignmentSnapshot;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.ScoredCandidate;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface AssignmentQueryService {
-    List<CandidateProfile> handle(GetTopCandidatesQuery query);
+    List<ScoredCandidate> handle(GetTopCandidatesQuery query);
 
     List<Assignment> handle(GetAssignmentsByUserIdQuery query);
 

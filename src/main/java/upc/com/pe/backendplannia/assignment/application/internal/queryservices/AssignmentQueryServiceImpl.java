@@ -11,6 +11,7 @@ import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTaskIdsByLat
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.LatestAssignmentSnapshot;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.ScoredCandidate;
 import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.AssignmentStatus;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryService;
 import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProvider;
@@ -48,7 +49,7 @@ public class AssignmentQueryServiceImpl implements AssignmentQueryService {
     }
 
     @Override
-    public List<CandidateProfile> handle(GetTopCandidatesQuery query) {
+    public List<ScoredCandidate> handle(GetTopCandidatesQuery query) {
         var taskRequirement = taskRequirementGateway.requireByTaskId(query.taskId());
 
         // El líder organiza, no se le recomienda: lo excluimos del pool. (Integración futura: hacerlo
@@ -58,7 +59,7 @@ public class AssignmentQueryServiceImpl implements AssignmentQueryService {
                 .filter(candidate -> !candidate.userId().equals(leaderUserId))
                 .toList();
 
-        return scoringDomainService.rankCandidates(candidates, taskRequirement).stream()
+        return scoringDomainService.rankCandidatesWithScores(candidates, taskRequirement).stream()
                 .limit(TOP_CANDIDATES_LIMIT)
                 .toList();
     }

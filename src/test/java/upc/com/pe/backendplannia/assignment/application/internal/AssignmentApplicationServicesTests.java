@@ -351,7 +351,7 @@ class AssignmentApplicationServicesTests {
         var result = assignmentQueryService.handle(new GetTopCandidatesQuery(TASK_ID, TEAM_ID));
 
         assertThat(result)
-                .extracting(CandidateProfile::userId)
+                .extracting(scored -> scored.candidate().userId())
                 .containsExactly(BEST_USER_ID, SECOND_USER_ID, THIRD_USER_ID);
     }
 
@@ -371,7 +371,7 @@ class AssignmentApplicationServicesTests {
 
         assertThat(result).hasSize(3);
         assertThat(result)
-                .extracting(CandidateProfile::userId)
+                .extracting(scored -> scored.candidate().userId())
                 .containsExactly(BEST_USER_ID, SECOND_USER_ID, THIRD_USER_ID);
     }
 
@@ -389,7 +389,7 @@ class AssignmentApplicationServicesTests {
         var result = assignmentQueryService.handle(new GetTopCandidatesQuery(TASK_ID, TEAM_ID));
 
         assertThat(result)
-                .extracting(CandidateProfile::userId)
+                .extracting(scored -> scored.candidate().userId())
                 .containsExactly(BEST_USER_ID);
     }
 
@@ -407,7 +407,7 @@ class AssignmentApplicationServicesTests {
         var result = assignmentQueryService.handle(new GetTopCandidatesQuery(TASK_ID, TEAM_ID));
 
         assertThat(result)
-                .extracting(CandidateProfile::userId)
+                .extracting(scored -> scored.candidate().userId())
                 .containsExactly(SECOND_USER_ID)
                 .doesNotContain(BEST_USER_ID);
     }

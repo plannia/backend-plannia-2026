@@ -2,6 +2,7 @@ package upc.com.pe.backendplannia.assignment.domain.services;
 
 import org.springframework.stereotype.Service;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.ScoredCandidate;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.TaskRequirement;
 import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.AssignmentScoreWeights;
 import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVector;
@@ -55,18 +56,30 @@ public class ScoringDomainService {
         return calculateMatch(candidate.embeddedInterests(), task.requirementsEmbedding());
     }
 
-    public List<CandidateProfile> rankCandidates(List<CandidateProfile> candidates, TaskRequirement task) {
-        // Precalculamos el score una vez por candidato: Comparator.comparing reevalúa la key en cada
-        // comparación, y aquí esa key son varias similitudes coseno sobre vectores de ~768 dimensiones.
+    // Ranking con el desglose de cada sub-score (skill/experiencia/interés) + total. Precalculamos una
+    // vez por candidato: Comparator.comparing reevalúa la key en cada comparación, y esa key son varias
+    // similitudes coseno sobre vectores grandes.
+    public List<ScoredCandidate> rankCandidatesWithScores(List<CandidateProfile> candidates, TaskRequirement task) {
+        var weights = AssignmentScoreWeights.defaults();
         return candidates.stream()
                 .filter(candidate -> meetsAvailabilityThreshold(candidate, task))
-                .map(candidate -> new ScoredCandidate(candidate, calculateScore(candidate, task)))
-                .sorted(Comparator.comparing(ScoredCandidate::score).reversed())
-                .map(ScoredCandidate::candidate)
+                .map(candidate -> {
+                    float skill = calculateSkillMatch(candidate, task);
+                    float experience = calculateExperienceMatch(candidate, task);
+                    float interest = calculateInterestMatch(candidate, task);
+                    float total = skill * weights.skillWeight()
+                            + experience * weights.experienceWeight()
+                            + interest * weights.interestWeight();
+                    return new ScoredCandidate(candidate, skill, experience, interest, total);
+                })
+                .sorted(Comparator.comparing(ScoredCandidate::totalScore).reversed())
                 .toList();
     }
 
-    private record ScoredCandidate(CandidateProfile candidate, float score) {
+    public List<CandidateProfile> rankCandidates(List<CandidateProfile> candidates, TaskRequirement task) {
+        return rankCandidatesWithScores(candidates, task).stream()
+                .map(ScoredCandidate::candidate)
+                .toList();
     }
 
     private float calculateMatch(EmbeddingVector candidateEmbedding, EmbeddingVector taskEmbedding) {

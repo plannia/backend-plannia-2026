@@ -14,6 +14,7 @@ import upc.com.pe.backendplannia.assignment.domain.model.commands.CompleteAssign
 import upc.com.pe.backendplannia.assignment.domain.model.commands.ConfirmRecommendationCommand;
 import upc.com.pe.backendplannia.assignment.domain.model.queries.GetTopCandidatesQuery;
 import upc.com.pe.backendplannia.assignment.domain.model.readmodels.CandidateProfile;
+import upc.com.pe.backendplannia.assignment.domain.model.readmodels.ScoredCandidate;
 import upc.com.pe.backendplannia.assignment.domain.model.valueobjects.AssignmentStatus;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentCommandService;
 import upc.com.pe.backendplannia.assignment.domain.services.AssignmentQueryService;
@@ -135,8 +136,8 @@ class EndToEndFlowIntegrationTest {
         var taskId = createBackendTask(team, 4);
 
         // El ranking debe poner al backend primero para una tarea backend.
-        List<CandidateProfile> ranking = topCandidates(taskId, team.getId());
-        assertThat(ranking).extracting(CandidateProfile::userId).first().isEqualTo(backendUserId);
+        var ranking = topCandidates(taskId, team.getId());
+        assertThat(ranking).extracting(scored -> scored.candidate().userId()).first().isEqualTo(backendUserId);
 
         // Confirmar la recomendación del backend.
         var assignment = assignmentCommandService.handle(new ConfirmRecommendationCommand(taskId, backendUserId));
@@ -288,7 +289,7 @@ class EndToEndFlowIntegrationTest {
 
     // GetTopCandidates no es @Transactional y carga task.tools/knowledge de forma lazy: en el app web
     // funciona por Open-Session-In-View; en el test lo envolvemos en una transacción para tener sesión.
-    private List<CandidateProfile> topCandidates(Long taskId, Long teamId) {
+    private List<ScoredCandidate> topCandidates(Long taskId, Long teamId) {
         return new TransactionTemplate(transactionManager).execute(status ->
                 assignmentQueryService.handle(new GetTopCandidatesQuery(taskId, teamId)));
     }
