@@ -52,11 +52,14 @@ public class GanttChartCommandServiceImpl implements GanttChartCommandService {
             throw new IllegalArgumentException("Category must have at least one member to create a Gantt chart");
         }
 
-        if (category.hasGanttChart()) {
-            return Optional.of(category);
-        }
-
         try {
+            // La hoja ya existe: es un refresh manual ("Regenerar Gantt") — re-sincroniza el
+            // contenido con el estado actual de las tareas, sin crear una hoja nueva.
+            if (category.hasGanttChart()) {
+                syncCategoryGantt(category);
+                return Optional.of(categoryRepository.findById(category.getId()).orElse(category));
+            }
+
             var title = "Plannia - " + category.getName();
             var spreadsheet = ganttChartPort.createSpreadsheet(title);
             category.attachGanttChart(spreadsheet.spreadsheetId(), spreadsheet.spreadsheetUrl());

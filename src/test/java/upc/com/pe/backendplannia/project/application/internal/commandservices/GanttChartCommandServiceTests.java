@@ -64,15 +64,20 @@ class GanttChartCommandServiceTests {
     }
 
     @Test
-    void returnsExistingCategoryWhenGanttAlreadyExists() {
+    void reSyncsExistingGanttWithoutRecreatingIt() {
         var category = categoryWithMember();
         category.attachGanttChart("existing-sheet", "https://docs.google.com/spreadsheets/d/existing-sheet/edit");
         when(categoryRepository.findById(CATEGORY_ID)).thenReturn(Optional.of(category));
+        when(taskRepository.findByCategory_Id(CATEGORY_ID)).thenReturn(List.of());
+        when(ganttChartDataBuilder.build(eq(category), any()))
+                .thenReturn(new GanttChartSnapshot("Planning", List.of(), List.of(), List.of()));
 
         var result = service.handle(new CreateCategoryGanttCommand(CATEGORY_ID));
 
         assertThat(result).isPresent();
+        // Refresh manual: NO crea una hoja nueva, pero SÍ re-sincroniza el contenido.
         verify(ganttChartPort, never()).createSpreadsheet(any());
+        verify(ganttChartPort).syncContent(eq("existing-sheet"), any(GanttChartSnapshot.class));
     }
 
     @Test
