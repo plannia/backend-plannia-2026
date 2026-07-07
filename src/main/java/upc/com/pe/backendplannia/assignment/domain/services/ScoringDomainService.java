@@ -11,6 +11,14 @@ import java.util.List;
 
 @Service
 public class ScoringDomainService {
+    // Los embeddings de este modelo tienen una "línea base" de similitud alta (~0.3) incluso entre
+    // textos NO relacionados. Sin restar ese piso, cualquier experiencia previa —aunque sea de una
+    // tarea de otro dominio— sumaba ~0.35*0.3 y podía decidir la asignación (p. ej. quien completó
+    // un endpoint de backend ganaba una tarea de IA solo por "haber hecho algo antes"). Contamos solo
+    // la parte de la similitud POR ENCIMA del piso, reescalada a [0,1]: la experiencia irrelevante
+    // queda en 0 y solo pesa la experiencia realmente parecida a la tarea. Tunable.
+    private static final float EXPERIENCE_RELEVANCE_FLOOR = 0.35f;
+
     public boolean meetsAvailabilityThreshold(CandidateProfile candidate, TaskRequirement task) {
         return candidate.availableHours() >= task.estimatedHours();
     }
@@ -31,7 +39,16 @@ public class ScoringDomainService {
     }
 
     public float calculateExperienceMatch(CandidateProfile candidate, TaskRequirement task) {
-        return calculateMatch(candidate.embeddedExperience(), task.requirementsEmbedding());
+        var similarity = calculateMatch(candidate.embeddedExperience(), task.requirementsEmbedding());
+        return relevanceAboveFloor(similarity, EXPERIENCE_RELEVANCE_FLOOR);
+    }
+
+    /** Similitud útil: descuenta la línea base y reescala a [0,1]. Debajo del piso → 0 (no relevante). */
+    private float relevanceAboveFloor(float similarity, float floor) {
+        if (similarity <= floor) {
+            return 0f;
+        }
+        return (similarity - floor) / (1f - floor);
     }
 
     public float calculateInterestMatch(CandidateProfile candidate, TaskRequirement task) {
