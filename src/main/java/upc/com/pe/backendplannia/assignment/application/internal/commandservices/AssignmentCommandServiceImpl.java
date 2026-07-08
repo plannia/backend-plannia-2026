@@ -211,8 +211,6 @@ public class AssignmentCommandServiceImpl implements AssignmentCommandService {
                 candidate.embeddedAbilities(),
                 candidate.embeddedExperience(),
                 candidate.embeddedInterests(),
-                candidate.abilityItems(),
-                candidate.interestItems(),
                 candidate.experienceItems(),
                 candidate.activeHours() + reservedHours,
                 candidate.maxHours()

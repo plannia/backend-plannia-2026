@@ -22,9 +22,9 @@ class ScoringDomainServiceTests {
         return EmbeddingVector.of(list);
     }
 
-    // Perfil sin ítems: el scoring cae al embedding "single" (fallback de datos viejos).
+    // Sin entradas de experiencia individuales: el scoring de experiencia cae al promedio (fallback).
     private CandidateProfile candidate(EmbeddingVector abilities, EmbeddingVector experience) {
-        return new CandidateProfile(1L, abilities, experience, vec(1f, 0f), List.of(), List.of(), List.of(), 0f, 40f);
+        return new CandidateProfile(1L, abilities, experience, vec(1f, 0f), List.of(), 0f, 40f);
     }
 
     private TaskRequirement task(EmbeddingVector requirement) {
@@ -52,7 +52,7 @@ class ScoringDomainServiceTests {
     @Test
     void interestBelowRelevanceFloorCountsAsZero() {
         // cos([1,0],[1,4]) = 0.243 < 0.30: interés no relacionado (línea base) NO suma.
-        var candidate = new CandidateProfile(1L, vec(1f, 0f), vec(1f, 0f), vec(1f, 0f), List.of(), List.of(), List.of(), 0f, 40f);
+        var candidate = new CandidateProfile(1L, vec(1f, 0f), vec(1f, 0f), vec(1f, 0f), List.of(), 0f, 40f);
         var task = task(vec(1f, 4f));
 
         assertThat(service.calculateInterestMatch(candidate, task)).isZero();
@@ -61,7 +61,7 @@ class ScoringDomainServiceTests {
     @Test
     void interestAboveFloorIsRescaled() {
         // cos([1,1],[1,0]) = 0.707 -> (0.707 - 0.30) / (1 - 0.30) = 0.582
-        var candidate = new CandidateProfile(1L, vec(1f, 0f), vec(1f, 0f), vec(1f, 1f), List.of(), List.of(), List.of(), 0f, 40f);
+        var candidate = new CandidateProfile(1L, vec(1f, 0f), vec(1f, 0f), vec(1f, 1f), List.of(), 0f, 40f);
         var task = task(vec(1f, 0f));
 
         assertThat(service.calculateInterestMatch(candidate, task)).isCloseTo(0.582f, within(0.01f));
@@ -69,7 +69,7 @@ class ScoringDomainServiceTests {
 
     @Test
     void skillMatchStaysRawCosineNotFloored() {
-        // La misma similitud 0.316 se mantiene tal cual para skill: el piso es solo de experiencia/interés.
+        // La similitud 0.316 se mantiene tal cual para skill: el piso es solo de experiencia/interés.
         var candidate = candidate(vec(1f, 3f), vec(1f, 0f));
         var task = task(vec(1f, 0f));
 
@@ -77,21 +77,11 @@ class ScoringDomainServiceTests {
     }
 
     @Test
-    void skillMatchTakesTheBestItemNotTheAverageOrSingle() {
-        // El embedding "single" es ortogonal (cos 0), pero un ÍTEM está alineado (cos 1): gana el máximo por ítem.
-        var candidate = new CandidateProfile(1L, vec(0f, 1f), vec(1f, 0f), vec(1f, 0f),
-                List.of(vec(0f, 1f), vec(1f, 0f)), List.of(), List.of(), 0f, 40f);
-        var task = task(vec(1f, 0f));
-
-        assertThat(service.calculateSkillMatch(candidate, task)).isCloseTo(1f, within(0.001f));
-    }
-
-    @Test
     void experienceMatchTakesTheMostSimilarCompletedTaskNotTheAverage() {
-        // Una tarea completada relevante (cos 1) y otra irrelevante (cos 0): experiencia = máximo (1),
-        // no el promedio (~0.71 -> 0.495 tras piso). El máximo demuestra que no se diluye.
+        // Dos tareas completadas: una relevante (cos 1) y otra irrelevante (cos 0). La experiencia es el
+        // MÁXIMO (1 -> 1 tras piso), no el promedio (~0.71 -> 0.495). Prueba que no se diluye.
         var candidate = new CandidateProfile(1L, vec(1f, 0f), vec(1f, 0f), vec(1f, 0f),
-                List.of(), List.of(), List.of(vec(1f, 0f), vec(0f, 1f)), 0f, 40f);
+                List.of(vec(1f, 0f), vec(0f, 1f)), 0f, 40f);
         var task = task(vec(1f, 0f));
 
         assertThat(service.calculateExperienceMatch(candidate, task)).isCloseTo(1f, within(0.001f));

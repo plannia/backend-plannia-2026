@@ -56,8 +56,6 @@ public class ProfileContextCandidateProfileProvider implements CandidateProfileP
                 memberProfile.getEmbeddedAbilities(),
                 memberProfile.getEmbeddedExperience(),
                 memberProfile.getEmbeddedInterests(),
-                memberProfile.getEmbeddedAbilityItems(),
-                memberProfile.getEmbeddedInterestItems(),
                 memberExperienceQueryService.findExperienceEmbeddings(memberProfile.getUserId()),
                 memberProfile.getActiveHours(),
                 memberProfile.getMaxHours()

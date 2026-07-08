@@ -263,8 +263,6 @@ class AssignmentLocalLmStudioIntegrationTest {
                 embeddedExperience,
                 embeddedInterests,
                 java.util.List.of(),
-                java.util.List.of(),
-                java.util.List.of(),
                 activeHours,
                 maxHours
         );

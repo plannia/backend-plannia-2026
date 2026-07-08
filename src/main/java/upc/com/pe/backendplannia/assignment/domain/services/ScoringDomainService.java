@@ -37,15 +37,13 @@ public class ScoringDomainService {
                 + interestMatch * weights.interestWeight();
     }
 
-    // Skills/intereses: híbrido max(string-completo, mejor-ítem). Los ítems son términos cortos que a
-    // veces embeben PEOR que el string completo contra una descripción rica, así que nunca bajamos de
-    // ese: el ítem solo suma si un skill puntual matchea mejor que el conjunto. Nunca peor que antes.
     public float calculateSkillMatch(CandidateProfile candidate, TaskRequirement task) {
-        return hybridMatch(candidate.abilityItems(), candidate.embeddedAbilities(), task.requirementsEmbedding());
+        return calculateMatch(candidate.embeddedAbilities(), task.requirementsEmbedding());
     }
 
-    // Experiencia: la tarea completada MÁS parecida (máximo), no el promedio (que se diluía con tareas
-    // de otro dominio). Sin ítems (dato viejo) cae al promedio guardado.
+    // Experiencia: la tarea completada MÁS parecida (máximo por tarea), no el promedio de todas —así
+    // completar una tarea de otro dominio no diluye la experiencia relevante. Sin entradas individuales
+    // (dato viejo) cae al promedio guardado. Luego se descuenta el piso de relevancia.
     public float calculateExperienceMatch(CandidateProfile candidate, TaskRequirement task) {
         var items = candidate.experienceItems();
         float similarity = (items != null && !items.isEmpty())
@@ -55,16 +53,8 @@ public class ScoringDomainService {
     }
 
     public float calculateInterestMatch(CandidateProfile candidate, TaskRequirement task) {
-        var similarity = hybridMatch(candidate.interestItems(), candidate.embeddedInterests(), task.requirementsEmbedding());
+        var similarity = calculateMatch(candidate.embeddedInterests(), task.requirementsEmbedding());
         return relevanceAboveFloor(similarity, INTEREST_RELEVANCE_FLOOR);
-    }
-
-    private float hybridMatch(List<EmbeddingVector> items, EmbeddingVector whole, EmbeddingVector task) {
-        float wholeMatch = calculateMatch(whole, task);
-        if (items == null || items.isEmpty()) {
-            return wholeMatch;
-        }
-        return Math.max(wholeMatch, bestItemMatch(items, task));
     }
 
     private float bestItemMatch(List<EmbeddingVector> items, EmbeddingVector task) {

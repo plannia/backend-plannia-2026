@@ -5,18 +5,16 @@ import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVecto
 import java.util.List;
 
 /**
- * Perfil del candidato para el scoring. Los embeddings "single" (abilities/interests/experience) son
- * el promedio/string-completo y quedan como fallback para perfiles viejos. Las listas *Items son un
- * embedding por ítem (por habilidad, por interés, por tarea completada): el scoring toma el MÁXIMO
- * para no diluir lo relevante. Ver ScoringDomainService.
+ * Perfil del candidato para el scoring. Skills e intereses van como un embedding del string completo.
+ * {@code experienceItems} es un embedding POR tarea completada (no el promedio): el scoring toma el
+ * MÁXIMO para no diluir la experiencia relevante con tareas de otros dominios. {@code embeddedExperience}
+ * (promedio) queda como fallback para datos sin entradas individuales. Ver ScoringDomainService.
  */
 public record CandidateProfile(
         Long userId,
         EmbeddingVector embeddedAbilities,
         EmbeddingVector embeddedExperience,
         EmbeddingVector embeddedInterests,
-        List<EmbeddingVector> abilityItems,
-        List<EmbeddingVector> interestItems,
         List<EmbeddingVector> experienceItems,
         float activeHours,
         float maxHours

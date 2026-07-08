@@ -486,8 +486,6 @@ class AssignmentApplicationServicesTests {
                 embeddedExperience,
                 embeddedInterests,
                 List.of(),
-                List.of(),
-                List.of(),
                 activeHours,
                 maxHours
         );
