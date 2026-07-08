@@ -48,10 +48,12 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Service
 @ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
@@ -256,7 +258,14 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     @Override
     public void shareWithEmails(String spreadsheetId, List<String> emails) {
         ensureReady();
+        // Solo compartimos con quien AÚN no tiene acceso. Re-crear un permiso existente igual cuenta
+        // contra el rate limit de compartir de Google (y reenvía notificación), y en cada re-sync
+        // explotaba con "límite para compartir". Listamos una vez y filtramos.
+        var alreadyShared = existingSharedEmails(spreadsheetId);
         for (var email : emails) {
+            if (email == null || email.isBlank() || alreadyShared.contains(email.toLowerCase(Locale.ROOT))) {
+                continue;
+            }
             try {
                 var permission = new Permission()
                         .setType("user")
@@ -276,6 +285,30 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
                     );
                 }
             }
+        }
+    }
+
+    /** Emails que ya tienen permiso en la hoja (en minúscula). Si falla la lectura, devuelve vacío. */
+    private Set<String> existingSharedEmails(String spreadsheetId) {
+        try {
+            var response = driveService.permissions().list(spreadsheetId)
+                    .setFields("permissions(emailAddress)")
+                    .setSupportsAllDrives(true)
+                    .execute();
+            if (response.getPermissions() == null) {
+                return Set.of();
+            }
+            var shared = new HashSet<String>();
+            for (var permission : response.getPermissions()) {
+                if (permission.getEmailAddress() != null) {
+                    shared.add(permission.getEmailAddress().toLowerCase(Locale.ROOT));
+                }
+            }
+            return shared;
+        } catch (IOException exception) {
+            LOGGER.warn("No se pudieron listar permisos de {}: {}. Se intentará compartir de todos modos.",
+                    spreadsheetId, GoogleApiIOExceptionHelper.describe(exception));
+            return Set.of();
         }
     }
 

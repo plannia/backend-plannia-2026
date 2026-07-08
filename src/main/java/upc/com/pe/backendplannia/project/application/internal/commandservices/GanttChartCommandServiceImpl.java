@@ -1,5 +1,7 @@
 package upc.com.pe.backendplannia.project.application.internal.commandservices;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,8 @@ import java.util.Optional;
 @Service
 @ConditionalOnProperty(name = "gantt.enabled", havingValue = "true")
 public class GanttChartCommandServiceImpl implements GanttChartCommandService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GanttChartCommandServiceImpl.class);
+
     private final CategoryRepository categoryRepository;
     private final TaskRepository taskRepository;
     private final GanttChartPort ganttChartPort;
@@ -90,8 +94,16 @@ public class GanttChartCommandServiceImpl implements GanttChartCommandService {
         var snapshot = ganttChartDataBuilder.build(category, tasks);
         var memberEmails = resolveMemberEmails(category);
 
+        // Compartir es best-effort: un rate limit de Google al compartir (o cualquier fallo al dar
+        // acceso) no debe impedir actualizar el contenido; la hoja ya está compartida de antes.
         try {
             ganttChartPort.shareWithEmails(category.getGanttSpreadsheetId(), memberEmails);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("No se pudo compartir el Gantt de la categoría {} (se sincroniza el contenido igual): {}",
+                    category.getId(), exception.getMessage());
+        }
+
+        try {
             ganttChartPort.syncContent(category.getGanttSpreadsheetId(), snapshot);
         } catch (GanttChartIntegrationException exception) {
             throw exception;
