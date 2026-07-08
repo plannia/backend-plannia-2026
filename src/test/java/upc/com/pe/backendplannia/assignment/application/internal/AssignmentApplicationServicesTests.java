@@ -233,7 +233,8 @@ class AssignmentApplicationServicesTests {
         assertThat(result.get().getSkillMatch()).isEqualTo(1f);
         assertThat(result.get().getExperienceMatch()).isEqualTo(0f);
         assertThat(result.get().getInterestMatch()).isEqualTo(1f);
-        assertThat(result.get().getScore()).isCloseTo(0.65f, offset(0.0001f));
+        // skill 1 * 0.65 + exp 0 * 0.20 + interés 1 * 0.15 = 0.80
+        assertThat(result.get().getScore()).isCloseTo(0.80f, offset(0.0001f));
         assertThat(result.get().getStatus()).isEqualTo(AssignmentStatus.ACTIVE);
         // La carga del miembro se reserva por las horas estimadas de la tarea.
         verify(memberWorkloadPort).reserveHours(SECOND_USER_ID, taskRequirement.estimatedHours());
