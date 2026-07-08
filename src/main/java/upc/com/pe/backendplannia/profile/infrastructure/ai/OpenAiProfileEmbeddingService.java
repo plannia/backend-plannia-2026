@@ -29,14 +29,34 @@ public class OpenAiProfileEmbeddingService implements ProfileEmbeddingService {
             var request = new EmbeddingRequest(List.of(text), null);
             var response = embeddingModel.call(request);
             float[] vector = response.getResults().getFirst().getOutput();
-
-            List<Float> floatList = new ArrayList<>();
-            for (float f : vector) floatList.add(f);
-            LOGGER.info("Embedding generated: textLength={}, embeddingDim={}", textLength, floatList.size());
-            return EmbeddingVector.of(floatList);
+            LOGGER.info("Embedding generated: textLength={}, embeddingDim={}", textLength, vector.length);
+            return toVector(vector);
         } catch (RuntimeException exception) {
             LOGGER.error("Embedding generation failed: textLength={}", textLength, exception);
             throw exception;
         }
+    }
+
+    @Override
+    public List<EmbeddingVector> generateEmbeddings(List<String> texts) {
+        if (texts == null || texts.isEmpty()) {
+            return List.of();
+        }
+        LOGGER.info("Generating {} profile item embeddings in one call", texts.size());
+        try {
+            var response = embeddingModel.call(new EmbeddingRequest(texts, null));
+            return response.getResults().stream()
+                    .map(result -> toVector(result.getOutput()))
+                    .toList();
+        } catch (RuntimeException exception) {
+            LOGGER.error("Batch embedding generation failed: count={}", texts.size(), exception);
+            throw exception;
+        }
+    }
+
+    private EmbeddingVector toVector(float[] vector) {
+        List<Float> floatList = new ArrayList<>(vector.length);
+        for (float f : vector) floatList.add(f);
+        return EmbeddingVector.of(floatList);
     }
 }

@@ -485,6 +485,9 @@ class AssignmentApplicationServicesTests {
                 embeddedAbilities,
                 embeddedExperience,
                 embeddedInterests,
+                List.of(),
+                List.of(),
+                List.of(),
                 activeHours,
                 maxHours
         );

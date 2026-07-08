@@ -6,6 +6,7 @@ import upc.com.pe.backendplannia.assignment.domain.services.CandidateProfileProv
 import upc.com.pe.backendplannia.profile.domain.model.aggregates.MemberProfile;
 import upc.com.pe.backendplannia.profile.domain.model.queries.GetMemberProfileByUserIdQuery;
 import upc.com.pe.backendplannia.profile.domain.model.queries.GetMemberProfilesByTeamIdQuery;
+import upc.com.pe.backendplannia.profile.domain.services.MemberExperienceQueryService;
 import upc.com.pe.backendplannia.profile.domain.services.MemberProfileQueryService;
 
 import java.util.List;
@@ -18,9 +19,14 @@ import java.util.Optional;
 @Service
 public class ProfileContextCandidateProfileProvider implements CandidateProfileProvider {
     private final MemberProfileQueryService memberProfileQueryService;
+    private final MemberExperienceQueryService memberExperienceQueryService;
 
-    public ProfileContextCandidateProfileProvider(MemberProfileQueryService memberProfileQueryService) {
+    public ProfileContextCandidateProfileProvider(
+            MemberProfileQueryService memberProfileQueryService,
+            MemberExperienceQueryService memberExperienceQueryService
+    ) {
         this.memberProfileQueryService = memberProfileQueryService;
+        this.memberExperienceQueryService = memberExperienceQueryService;
     }
 
     @Override
@@ -50,6 +56,9 @@ public class ProfileContextCandidateProfileProvider implements CandidateProfileP
                 memberProfile.getEmbeddedAbilities(),
                 memberProfile.getEmbeddedExperience(),
                 memberProfile.getEmbeddedInterests(),
+                memberProfile.getEmbeddedAbilityItems(),
+                memberProfile.getEmbeddedInterestItems(),
+                memberExperienceQueryService.findExperienceEmbeddings(memberProfile.getUserId()),
                 memberProfile.getActiveHours(),
                 memberProfile.getMaxHours()
         );

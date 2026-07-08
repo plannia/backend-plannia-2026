@@ -18,6 +18,8 @@ import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.reposito
 import upc.com.pe.backendplannia.profile.infrastructure.persistence.jpa.repositories.MemberProfileRepository;
 import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVector;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -50,6 +52,8 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
         var memberProfile = new MemberProfile(command);
         memberProfile.updateAbilityEmbedding(profileEmbeddingService.generateEmbedding(command.abilities()));
         memberProfile.updateInterestEmbedding(profileEmbeddingService.generateEmbedding(command.interests()));
+        memberProfile.updateAbilityItemEmbeddings(embedItemsOrThrow(command.abilities(), "abilities"));
+        memberProfile.updateInterestItemEmbeddings(embedItemsOrThrow(command.interests(), "interests"));
 
         var savedMemberProfile = memberProfileRepository.save(memberProfile);
         return Optional.of(savedMemberProfile);
@@ -96,10 +100,12 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
         if (command.abilities() != null) {
             memberProfile.updateAbilities(command.abilities());
             memberProfile.updateAbilityEmbedding(generateEmbeddingOrThrow(command.abilities(), "abilities"));
+            memberProfile.updateAbilityItemEmbeddings(embedItemsOrThrow(command.abilities(), "abilities"));
         }
         if (command.interests() != null) {
             memberProfile.updateInterests(command.interests());
             memberProfile.updateInterestEmbedding(generateEmbeddingOrThrow(command.interests(), "interests"));
+            memberProfile.updateInterestItemEmbeddings(embedItemsOrThrow(command.interests(), "interests"));
         }
 
         var savedMemberProfile = memberProfileRepository.save(memberProfile);
@@ -115,6 +121,33 @@ public class MemberProfileCommandServiceImpl implements MemberProfileCommandServ
                     exception
             );
         }
+    }
+
+    // Un embedding por ítem (habilidad/interés) para el match "máximo por ítem": una skill relevante
+    // no se diluye entre las demás. Si el texto queda vacío, no se llama a la IA (lista vacía).
+    private List<EmbeddingVector> embedItemsOrThrow(String csv, String fieldName) {
+        var items = splitItems(csv);
+        if (items.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return profileEmbeddingService.generateEmbeddings(items);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException(
+                    "Failed to generate " + fieldName + " item embeddings. Check AI configuration and try again.",
+                    exception
+            );
+        }
+    }
+
+    private static List<String> splitItems(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .toList();
     }
 
     @Override

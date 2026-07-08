@@ -8,6 +8,7 @@ import upc.com.pe.backendplannia.profile.domain.model.commands.CreateMemberProfi
 import upc.com.pe.backendplannia.shared.domain.model.aggregates.AuditableAbstractAggregateRoot;
 import upc.com.pe.backendplannia.shared.domain.model.valueobjects.EmbeddingVector;
 import upc.com.pe.backendplannia.shared.infrastructure.persistence.jpa.converters.EmbeddingVectorConverter;
+import upc.com.pe.backendplannia.shared.infrastructure.persistence.jpa.converters.EmbeddingVectorListConverter;
 
 import java.util.List;
 
@@ -43,6 +44,17 @@ public class MemberProfile extends AuditableAbstractAggregateRoot<MemberProfile>
     @Convert(converter = EmbeddingVectorConverter.class)
     @Column(nullable = false, columnDefinition = "TEXT")
     private EmbeddingVector embeddedExperience;
+
+    // Un embedding POR habilidad / POR interés (no el string entero). Habilita el match "máximo por
+    // ítem": una skill relevante no se diluye entre otras. Vacío en perfiles viejos → el scoring usa
+    // el embedding del string completo como fallback hasta que el miembro re-guarde su perfil.
+    @Convert(converter = EmbeddingVectorListConverter.class)
+    @Column(columnDefinition = "TEXT")
+    private List<EmbeddingVector> embeddedAbilityItems = List.of();
+
+    @Convert(converter = EmbeddingVectorListConverter.class)
+    @Column(columnDefinition = "TEXT")
+    private List<EmbeddingVector> embeddedInterestItems = List.of();
 
     protected MemberProfile() {
     }
@@ -91,6 +103,14 @@ public class MemberProfile extends AuditableAbstractAggregateRoot<MemberProfile>
 
     public void updateAbilityEmbedding(EmbeddingVector abilities) {
         this.embeddedAbilities = abilities;
+    }
+
+    public void updateAbilityItemEmbeddings(List<EmbeddingVector> items) {
+        this.embeddedAbilityItems = items == null ? List.of() : items;
+    }
+
+    public void updateInterestItemEmbeddings(List<EmbeddingVector> items) {
+        this.embeddedInterestItems = items == null ? List.of() : items;
     }
 
     // Las horas se manejan como float para alinearse con maxHours/activeHours; estimatedHours (int)
