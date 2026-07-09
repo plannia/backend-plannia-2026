@@ -258,6 +258,7 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
     @Override
     public void shareWithEmails(String spreadsheetId, List<String> emails) {
         ensureReady();
+        ensureAnyoneWithLinkCanEdit(spreadsheetId);
         // Solo compartimos con quien AÚN no tiene acceso. Re-crear un permiso existente igual cuenta
         // contra el rate limit de compartir de Google (y reenvía notificación), y en cada re-sync
         // explotaba con "límite para compartir". Listamos una vez y filtramos.
@@ -286,6 +287,58 @@ public class GoogleSheetsGanttAdapter implements GanttChartPort {
                 }
             }
         }
+    }
+
+    private void ensureAnyoneWithLinkCanEdit(String spreadsheetId) {
+        try {
+            var existingPermission = existingAnyonePermission(spreadsheetId);
+            if (existingPermission != null) {
+                if ("writer".equals(existingPermission.getRole())
+                        && !Boolean.TRUE.equals(existingPermission.getAllowFileDiscovery())) {
+                    return;
+                }
+
+                var permission = new Permission()
+                        .setRole("writer")
+                        .setAllowFileDiscovery(false);
+                driveService.permissions()
+                        .update(spreadsheetId, existingPermission.getId(), permission)
+                        .setSupportsAllDrives(true)
+                        .execute();
+                return;
+            }
+
+            var permission = new Permission()
+                    .setType("anyone")
+                    .setRole("writer")
+                    .setAllowFileDiscovery(false);
+            driveService.permissions()
+                    .create(spreadsheetId, permission)
+                    .setSupportsAllDrives(true)
+                    .execute();
+        } catch (IOException exception) {
+            throw new GanttChartIntegrationException(
+                    "Failed to enable link editing for spreadsheet " + spreadsheetId + ": "
+                            + GoogleApiIOExceptionHelper.describe(exception),
+                    exception
+            );
+        }
+    }
+
+    private Permission existingAnyonePermission(String spreadsheetId) throws IOException {
+        var response = driveService.permissions().list(spreadsheetId)
+                .setFields("permissions(id,type,role,allowFileDiscovery)")
+                .setSupportsAllDrives(true)
+                .execute();
+        if (response.getPermissions() == null) {
+            return null;
+        }
+        for (var permission : response.getPermissions()) {
+            if ("anyone".equals(permission.getType())) {
+                return permission;
+            }
+        }
+        return null;
     }
 
     /** Emails que ya tienen permiso en la hoja (en minúscula). Si falla la lectura, devuelve vacío. */

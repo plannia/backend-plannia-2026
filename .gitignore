@@ -44,3 +44,4 @@ application-local.properties
 
 plannia.PublishSettings
 .env
+AUDITORIA_PROBLEMAS_PLANNIA.md
